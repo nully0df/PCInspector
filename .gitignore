@@ -1,0 +1,21 @@
+# Visual Studio / JetBrains / local settings
+.vs/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+
+# Build and package outputs
+**/bin/
+**/obj/
+artifacts/
+publish/
+TestResults/
+*.nupkg
+*.snupkg
+
+# Local diagnostics and secrets
+*.log
+.env
+.env.*
+!.env.example
