@@ -11,7 +11,11 @@ public partial class MainForm : Form
         InitializeComponent();
     }
 
-    private async void MainForm_Shown(object? sender, EventArgs e) => await RefreshInfoAsync();
+    private async void MainForm_Shown(object? sender, EventArgs e)
+    {
+        processesView.StartMonitoring();
+        await RefreshInfoAsync();
+    }
 
     private async void RefreshButton_Click(object? sender, EventArgs e) => await RefreshInfoAsync();
 

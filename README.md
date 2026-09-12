@@ -1,7 +1,7 @@
 # PCInspector
 
-A small Windows system information utility built with C# and .NET 10 WinForms.
-It collects a snapshot of the local computer and displays it in a desktop window.
+A Windows diagnostics utility built with C# and .NET 10 WinForms.
+Use it to inspect the computer and identify processes consuming CPU and memory.
 
 ## Features
 
@@ -12,6 +12,34 @@ It collects a snapshot of the local computer and displays it in a desktop window
 - IPv4 addresses of active network adapters, including VPN and virtual adapters.
 - System uptime since the Windows boot time.
 - Refresh button, background collection and partial results when a section fails.
+- Live process list: CPU%, working-set RAM, PID and executable path.
+- Sortable numeric columns, average/peak CPU and per-process samples for the last minute.
+
+![Processes tab with demonstration data](docs/processes-demo.png)
+
+The screenshot uses fictional process names, paths and readings.
+
+## Inspect a busy computer
+
+Open **Processes**, wait for two samples, then sort by **CPU %** or **RAM MiB**.
+Select a row to inspect its CPU history and copy the full executable path from the box below.
+Use **Avg / 60 s %** and **Peak / 60 s %** to find sustained load and recent spikes.
+The first minute fills gradually; the detail line shows the actual measured duration.
+
+Sampling runs about once a second while the application is open, including on the System tab.
+CPU% is processor time divided by elapsed time and the logical processor count reported to
+PCInspector. It measures time, so it may differ from Task Manager's frequency-adjusted figures.
+RAM is the working set, including shared pages; it is not private memory or a sum of system RAM.
+
+**—** means a value is not available yet or could not be read. Protected processes may have no
+path or CPU reading. **Not observed** means a process was absent from the latest successful scan;
+its history remains for up to 60 seconds. PID and start time distinguish separate process lifetimes.
+Processes that start and exit between scans may be missed. Sampling gaps over three seconds are
+excluded from CPU calculations, and averages use only valid measured intervals, weighted by time.
+History is held in memory and disappears when the app closes.
+
+High load is a lead for investigation, not a malware verdict. This version does not inspect GPU
+usage, signatures, network connections or persistence, and cannot guarantee detection of hidden malware.
 
 ## Requirements
 
@@ -46,6 +74,10 @@ src/PCInspector/
   DisplayFormat.cs              Byte sizes and uptime formatting
   Models/SystemSnapshot.cs      Snapshot and disk data
   Services/SystemInfoService.cs Windows, drive and network queries
+  ProcessesView.cs              Process table and selected history
+  Models/ProcessReading.cs      Readings, process identity and CPU intervals
+  Services/ProcessSampler.cs    Reads Windows processes
+  Services/ProcessHistory.cs    CPU deltas and rolling 60-second history
 tests/PCInspector.Checks/        Executable checks without a test framework
 docs/LEARNING.ru.md              Guided code walkthrough in Russian
 ```
@@ -71,7 +103,7 @@ the app displays **No active IPv4 addresses found**.
 
 Uptime is calculated from WMI boot time and the current clock. Windows Fast Startup
 can preserve the kernel session across shutdowns; use **Restart** to reset it.
-Clock changes can affect the calculation. Values update on launch and on Refresh,
+Clock changes can affect the calculation. System-tab values update on launch and on Refresh,
 not continuously. WMI failures produce warnings and preserve other sections.
 WMI enumeration has a timeout, but this is not a hard deadline for the entire refresh.
 
@@ -80,9 +112,12 @@ WMI enumeration has a timeout, but this is not a hard deadline for the entire re
 ```powershell
 dotnet run --project tests/PCInspector.Checks --configuration Release
 dotnet run --project tests/PCInspector.Checks --configuration Release -- --live
+dotnet run --project tests/PCInspector.Checks --configuration Release -- --process-live
 ```
 
-The first command checks formatting edge cases. `--live` also checks the real Windows
+The first command checks formatting, CPU math, PID reuse, gaps and rolling history.
+`--process-live` also checks attribution of real CPU work, RAM and the test process path.
+`--live` checks the real Windows
 collector for required data and sensible values; it does not print machine names or IPs.
 It expects a working local WMI service and at least one ready local drive.
 
@@ -94,11 +129,13 @@ Manual checks:
 4. Resize the window and click Refresh several times. The button should be disabled while reading.
 5. Where available, check an empty card reader and run without an active network connection.
 6. Close the window during collection; the application should exit without an error dialog.
+7. Open Processes, select a process, sort by CPU or RAM and wait: selection and sorting should persist.
+8. Start and close a harmless app. Its row should become Not observed and disappear after a minute.
 
 ## Next steps
 
 - Export a snapshot as TXT and JSON.
-- Add a screenshot using demonstration data.
+- Extend process details with launch arguments and parent process.
 - Add IPv6 display and cancellation for long reads.
 
 ## Learning notes

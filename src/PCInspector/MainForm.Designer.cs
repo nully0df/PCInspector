@@ -10,6 +10,7 @@ partial class MainForm
     private DataGridView summaryGrid = null!;
     private DataGridView disksGrid = null!;
     private TextBox warningsBox = null!;
+    private ProcessesView processesView = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -92,11 +93,19 @@ partial class MainForm
         layout.Controls.Add(disksGrid, 0, 3);
         layout.Controls.Add(warningsBox, 0, 4);
         layout.Controls.Add(statusLabel, 0, 5);
-        Controls.Add(layout);
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        var systemTab = new TabPage("System");
+        var processesTab = new TabPage("Processes");
+        processesView = new ProcessesView();
+        systemTab.Controls.Add(layout);
+        processesTab.Controls.Add(processesView);
+        tabs.TabPages.Add(systemTab);
+        tabs.TabPages.Add(processesTab);
+        Controls.Add(tabs);
 
         AutoScaleDimensions = new SizeF(7, 15);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(940, 650);
+        ClientSize = new Size(1120, 760);
         MinimumSize = new Size(760, 550);
         StartPosition = FormStartPosition.CenterScreen;
         Text = "PCInspector — System information";
