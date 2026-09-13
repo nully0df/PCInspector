@@ -34,6 +34,10 @@ public partial class MainForm : Form
             summaryGrid.Rows.Add("Computer", snapshot.ComputerName);
             summaryGrid.Rows.Add("Windows", snapshot.WindowsVersion);
             summaryGrid.Rows.Add("CPU", snapshot.Cpu);
+            summaryGrid.Rows.Add("Graphics adapters", snapshot.GraphicsAdapters.Count == 0
+                ? "Unavailable / not reported"
+                : string.Join(Environment.NewLine, snapshot.GraphicsAdapters.Select(
+                    adapter => $"{adapter.Name} — driver {adapter.DriverVersion}")));
             summaryGrid.Rows.Add("RAM (usable by Windows)", DisplayFormat.Gibibytes(snapshot.TotalMemoryBytes));
             summaryGrid.Rows.Add("RAM (available)", DisplayFormat.Gibibytes(snapshot.FreeMemoryBytes));
             summaryGrid.Rows.Add("System uptime", DisplayFormat.Uptime(snapshot.Uptime));

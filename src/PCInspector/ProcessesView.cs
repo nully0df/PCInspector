@@ -14,12 +14,18 @@ public sealed class ProcessesView : UserControl
     private readonly Label status = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly TextBox pathBox = new() { Dock = DockStyle.Fill, ReadOnly = true };
     private readonly Label detail = new() { Dock = DockStyle.Fill, AutoSize = true };
+    private readonly ContextMenuStrip processMenu = new();
+    private readonly ToolStripMenuItem showFileItem = new("Show file in folder");
+    private readonly Func<string, Task> showFileAsync;
+    private string? contextPath;
+    private bool contextRequestedByMouse;
     private bool sampling;
     private bool rendering;
     private double lastSampleTime;
 
-    public ProcessesView()
+    public ProcessesView(Func<string, Task>? showFileAsync = null)
     {
+        this.showFileAsync = showFileAsync ?? FileLocationService.ShowAsync;
         Dock = DockStyle.Fill;
         var layout = new TableLayoutPanel
         {
@@ -58,6 +64,31 @@ public sealed class ProcessesView : UserControl
                 processGrid.FirstDisplayedScrollingRowIndex = 0;
         };
         processGrid.AccessibleName = "Processes sorted by resource usage";
+        processMenu.Items.Add(showFileItem);
+        processGrid.ContextMenuStrip = processMenu;
+        processGrid.CellMouseDown += ProcessGrid_CellMouseDown;
+        processGrid.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Right && processGrid.HitTest(e.X, e.Y).RowIndex < 0)
+            {
+                contextRequestedByMouse = true;
+                contextPath = null;
+            }
+        };
+        processMenu.Opening += ProcessMenu_Opening;
+        showFileItem.Click += async (_, _) =>
+        {
+            // Keep the menu's target even if a refresh changes the selected row.
+            var path = contextPath;
+            if (path is null) return;
+            try { await this.showFileAsync(path); }
+            catch (Exception ex)
+            {
+                if (!IsDisposed && !Disposing)
+                    MessageBox.Show(this, $"Could not show the file. It may have been moved, deleted or become inaccessible.\n{ex.Message}",
+                        "PCInspector", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        };
         pathBox.AccessibleName = "Selected process executable path";
         AddColumn(historyGrid, "Time", "Seconds ago (interval end)", 210, typeof(double));
         AddColumn(historyGrid, "Duration", "Sample duration, s", 165, typeof(double));
@@ -88,8 +119,34 @@ public sealed class ProcessesView : UserControl
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) timer.Dispose();
+        if (disposing)
+        {
+            timer.Dispose();
+            processMenu.Dispose();
+        }
         base.Dispose(disposing);
+    }
+
+    private void ProcessGrid_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right) return;
+        contextRequestedByMouse = true;
+        contextPath = null;
+        if (e.RowIndex < 0) return;
+        var row = processGrid.Rows[e.RowIndex];
+        processGrid.CurrentCell = row.Cells[Math.Max(0, e.ColumnIndex)];
+        row.Selected = true;
+        contextPath = (row.Tag as ProcessRow)?.Path;
+    }
+
+    private void ProcessMenu_Opening(object? sender, CancelEventArgs e)
+    {
+        if (!contextRequestedByMouse)
+            contextPath = (processGrid.CurrentRow?.Tag as ProcessRow)?.Path;
+        contextRequestedByMouse = false;
+        e.Cancel = contextPath is null;
+        showFileItem.Enabled = FileLocationService.CanLocate(contextPath);
+        showFileItem.ToolTipText = showFileItem.Enabled ? contextPath : "File path is unavailable or the file no longer exists.";
     }
 
     private async Task SampleAsync()

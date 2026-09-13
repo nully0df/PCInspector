@@ -15,6 +15,7 @@ public sealed class SystemInfoService
         // Each section can fail independently without losing the other results.
         ReadSection(snapshot, "Windows / RAM / uptime", () => ReadOperatingSystem(snapshot));
         ReadSection(snapshot, "CPU", () => ReadCpu(snapshot));
+        ReadSection(snapshot, "Graphics adapters", () => ReadGraphicsAdapters(snapshot));
         ReadSection(snapshot, "Disks", () => ReadDisks(snapshot));
         ReadSection(snapshot, "Network", () => ReadNetwork(snapshot));
         return snapshot;
@@ -62,6 +63,22 @@ public sealed class SystemInfoService
         }
         if (names.Count > 0)
             snapshot.Cpu = string.Join("; ", names);
+    }
+
+    private static void ReadGraphicsAdapters(SystemSnapshot snapshot)
+    {
+        using var searcher = CreateSearcher("SELECT Name, DriverVersion FROM Win32_VideoController");
+        using var results = searcher.Get();
+        foreach (ManagementObject item in results)
+        {
+            using (item)
+            {
+                snapshot.GraphicsAdapters.Add(new GraphicsAdapterInfo(
+                    item["Name"] is string name && !string.IsNullOrWhiteSpace(name) ? name.Trim() : "Unknown adapter",
+                    item["DriverVersion"] is string version && !string.IsNullOrWhiteSpace(version)
+                        ? version.Trim() : "Unavailable"));
+            }
+        }
     }
 
     private static void ReadDisks(SystemSnapshot snapshot)

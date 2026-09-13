@@ -89,6 +89,9 @@ if (args.Contains("--live"))
     Check(!string.IsNullOrWhiteSpace(snapshot.ComputerName), "Computer name collected");
     Check(snapshot.WindowsVersion != "Unavailable", "Windows version collected");
     Check(snapshot.Cpu != "Unavailable", "CPU collected");
+    Check(snapshot.GraphicsAdapters.Count > 0 && snapshot.GraphicsAdapters.All(adapter =>
+        !string.IsNullOrWhiteSpace(adapter.Name) && !string.IsNullOrWhiteSpace(adapter.DriverVersion)),
+        "Graphics adapters and driver fields collected");
     Check(snapshot.TotalMemoryBytes > 0, "Usable RAM collected");
     Check(snapshot.FreeMemoryBytes.HasValue && snapshot.FreeMemoryBytes <= snapshot.TotalMemoryBytes,
         "Available RAM within usable RAM");
@@ -105,7 +108,7 @@ if (args.Contains("--ui"))
 {
     var uiFailures = ProcessUiChecks.Run();
     foreach (var failure in uiFailures) Console.WriteLine(failure);
-    Check(uiFailures.Count == 0, "UI: missing values last in eight numeric sorts and explicit missing-data labels");
+    Check(uiFailures.Count == 0, "UI: numeric sorting, missing-data labels and file context-menu targeting");
 }
 
 Console.WriteLine($"Finished: {failures.Count} failure(s).");

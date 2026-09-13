@@ -7,6 +7,7 @@ Use it to inspect the computer and identify processes consuming CPU and memory.
 
 - Computer name and Windows edition, architecture, version and build.
 - CPU model name(s).
+- Graphics adapter names and driver versions, including multiple adapters.
 - Total physical memory usable by Windows and currently available RAM.
 - Local drive letters, drive types, total size and free space.
 - IPv4 addresses of active network adapters, including VPN and virtual adapters.
@@ -14,6 +15,7 @@ Use it to inspect the computer and identify processes consuming CPU and memory.
 - Refresh button, background collection and partial results when a section fails.
 - Live process list: CPU%, working-set RAM, PID and executable path.
 - Sortable numeric columns, average/peak CPU and per-process samples for the last minute.
+- Right-click a process to show its executable selected in File Explorer.
 
 ![Processes tab with demonstration data](docs/processes-demo.png)
 
@@ -23,6 +25,9 @@ The screenshot uses fictional process names, paths and readings.
 
 Open **Processes**, wait for two samples, then sort by **CPU %** or **RAM MiB**.
 Select a row to inspect its CPU history and copy the full executable path from the box below.
+Right-click a process and choose **Show file in folder** to locate its executable without running it.
+The item is disabled for unavailable or missing files. The menu keeps the clicked process's path
+even if the table refreshes while the menu is open.
 Use **Avg / 60 s %** and **Peak / 60 s %** to find sustained load and recent spikes.
 The first minute fills gradually; the detail line shows the actual measured duration.
 
@@ -81,6 +86,7 @@ src/PCInspector/
   Models/ProcessReading.cs      Readings, process identity and CPU intervals
   Services/ProcessSampler.cs    Reads Windows processes
   Services/ProcessHistory.cs    CPU deltas and rolling 60-second history
+  Services/FileLocationService.cs Opens Explorer with the executable selected
 tests/PCInspector.Checks/        Executable checks without a test framework
 docs/LEARNING.ru.md              Guided code walkthrough in Russian
 ```
@@ -95,6 +101,7 @@ the window responsive while WMI reads system information.
 | --- | --- |
 | Windows, RAM, boot time | WMI `Win32_OperatingSystem` |
 | CPU | WMI `Win32_Processor` |
+| Graphics adapter names and drivers | WMI `Win32_VideoController` |
 | Local volumes | .NET `DriveInfo` |
 | Local IPv4 addresses | .NET `NetworkInterface` |
 
