@@ -16,6 +16,7 @@ Use it to inspect the computer and identify processes consuming CPU and memory.
 - Live process list: CPU%, working-set RAM, PID and executable path.
 - Sortable numeric columns, average/peak CPU and per-process samples for the last minute.
 - Right-click a process to show its executable selected in File Explorer.
+- Right-click a process to open Task Manager and select the same PID in Details.
 - Fluent-inspired light theme with summary cards, rounded panels and quieter tables.
 
 ![System overview with demonstration data](docs/system-demo.png)
@@ -31,6 +32,10 @@ Select a row to inspect its CPU history and copy the full executable path from t
 Right-click a process and choose **Show file in folder** to locate its executable without running it.
 The item is disabled for unavailable or missing files. The menu keeps the clicked process's path
 even if the table refreshes while the menu is open.
+Choose **Open in Task Manager** to open the Details page and select the clicked process by PID.
+This uses Windows UI Automation because Task Manager has no documented command-line switch for
+selecting a process. If a particular Windows build does not expose its process rows to UI Automation,
+Task Manager still opens and PCInspector reports that the row could not be selected.
 Use **Avg %** and **Peak %** to find sustained load and recent spikes over the last 60 seconds.
 The first minute fills gradually; the detail line shows the actual measured duration.
 
@@ -91,6 +96,7 @@ src/PCInspector/
   Services/ProcessSampler.cs    Reads Windows processes
   Services/ProcessHistory.cs    CPU deltas and rolling 60-second history
   Services/FileLocationService.cs Opens Explorer with the executable selected
+  Services/TaskManagerService.cs Opens Task Manager and selects a process through UI Automation
 tests/PCInspector.Checks/        Executable checks without a test framework
 docs/LEARNING.ru.md              Guided code walkthrough in Russian
 ```

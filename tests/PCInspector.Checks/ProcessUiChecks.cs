@@ -16,7 +16,10 @@ internal static class ProcessUiChecks
             try
             {
                 string? openedPath = null;
-                using var view = new ProcessesView(path => { openedPath = path; return Task.CompletedTask; });
+                (int Pid, string Name)? taskManagerTarget = null;
+                using var view = new ProcessesView(
+                    path => { openedPath = path; return Task.CompletedTask; },
+                    (pid, name) => { taskManagerTarget = (pid, name); return Task.CompletedTask; });
                 var grid = Descendants(view).OfType<DataGridView>()
                     .Single(control => control.AccessibleName == "Processes sorted by resource usage");
                 foreach (var (pid, value) in new (int, double?)[] { (1, null), (2, 60), (3, 0), (4, 9.5), (5, null) })
@@ -43,7 +46,8 @@ internal static class ProcessUiChecks
                     failures.Add("Empty history must be labelled No samples");
 
                 var menu = grid.ContextMenuStrip!;
-                var open = menu.Items.OfType<ToolStripMenuItem>().Single();
+                var open = menu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Show file in folder");
+                var openTaskManager = menu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Open in Task Manager");
                 var opening = typeof(ContextMenuStrip).GetMethod("OnOpening", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 var mouseDown = typeof(DataGridView).GetMethod("OnCellMouseDown", BindingFlags.Instance | BindingFlags.NonPublic,
                     null, [typeof(DataGridViewCellMouseEventArgs)], null)!;
@@ -55,13 +59,18 @@ internal static class ProcessUiChecks
                     File.WriteAllText(samplePath, "Test data, not an executable");
                     var targetRow = grid.Rows[0];
                     targetRow.Tag = ((ProcessRow)targetRow.Tag!) with { Path = samplePath };
+                    var expectedTaskManagerTarget = (ProcessRow)targetRow.Tag;
                     grid.CurrentCell = grid.Rows[1].Cells[0];
                     mouseDown.Invoke(grid, [new DataGridViewCellMouseEventArgs(0, targetRow.Index, 5, 5,
                         new MouseEventArgs(MouseButtons.Right, 1, 5, 5, 0))]);
                     var args = new CancelEventArgs();
                     opening.Invoke(menu, [args]);
-                    if (args.Cancel || !open.Enabled || grid.CurrentRow != targetRow)
+                    if (args.Cancel || !open.Enabled || !openTaskManager.Enabled || grid.CurrentRow != targetRow)
                         failures.Add("Right-click must select its row and enable the file action");
+                    openTaskManager.PerformClick();
+                    if (taskManagerTarget is not { } taskTarget ||
+                        taskTarget.Pid != expectedTaskManagerTarget.Pid || taskTarget.Name != expectedTaskManagerTarget.Name)
+                        failures.Add("Task Manager action must keep the clicked process PID");
                     // A refresh or selection change while the menu is open cannot redirect the action.
                     grid.CurrentCell = grid.Rows[1].Cells[0];
                     open.PerformClick();

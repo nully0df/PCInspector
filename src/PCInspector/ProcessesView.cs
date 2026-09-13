@@ -16,16 +16,22 @@ public sealed class ProcessesView : UserControl
     private readonly Label detail = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly ContextMenuStrip processMenu = new();
     private readonly ToolStripMenuItem showFileItem = new("Show file in folder");
+    private readonly ToolStripMenuItem showTaskManagerItem = new("Open in Task Manager");
     private readonly Func<string, Task> showFileAsync;
+    private readonly Func<int, string, Task> showTaskManagerAsync;
     private string? contextPath;
+    private int? contextPid;
+    private string? contextName;
     private bool contextRequestedByMouse;
     private bool sampling;
     private bool rendering;
     private double lastSampleTime;
 
-    public ProcessesView(Func<string, Task>? showFileAsync = null)
+    public ProcessesView(Func<string, Task>? showFileAsync = null,
+        Func<int, string, Task>? showTaskManagerAsync = null)
     {
         this.showFileAsync = showFileAsync ?? FileLocationService.ShowAsync;
+        this.showTaskManagerAsync = showTaskManagerAsync ?? TaskManagerService.OpenAndSelectAsync;
         Dock = DockStyle.Fill;
         Font = FluentTheme.BodyFont;
         BackColor = FluentTheme.Canvas;
@@ -73,6 +79,8 @@ public sealed class ProcessesView : UserControl
         };
         processGrid.AccessibleName = "Processes sorted by resource usage";
         processMenu.Items.Add(showFileItem);
+        processMenu.Items.Add(new ToolStripSeparator());
+        processMenu.Items.Add(showTaskManagerItem);
         processGrid.ContextMenuStrip = processMenu;
         processGrid.CellMouseDown += ProcessGrid_CellMouseDown;
         processGrid.MouseDown += (_, e) =>
@@ -94,6 +102,20 @@ public sealed class ProcessesView : UserControl
             {
                 if (!IsDisposed && !Disposing)
                     MessageBox.Show(this, $"Could not show the file. It may have been moved, deleted or become inaccessible.\n{ex.Message}",
+                        "PCInspector", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        };
+        showTaskManagerItem.Click += async (_, _) =>
+        {
+            var pid = contextPid;
+            var name = contextName;
+            if (pid is null || name is null) return;
+            try { await this.showTaskManagerAsync(pid.Value, name); }
+            catch (Exception ex)
+            {
+                if (!IsDisposed && !Disposing)
+                    MessageBox.Show(this,
+                        $"Task Manager was opened, but the process could not be selected.\n{ex.Message}",
                         "PCInspector", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         };
@@ -165,21 +187,45 @@ public sealed class ProcessesView : UserControl
         if (e.Button != MouseButtons.Right) return;
         contextRequestedByMouse = true;
         contextPath = null;
+        contextPid = null;
+        contextName = null;
         if (e.RowIndex < 0) return;
         var row = processGrid.Rows[e.RowIndex];
         processGrid.CurrentCell = row.Cells[Math.Max(0, e.ColumnIndex)];
         row.Selected = true;
-        contextPath = (row.Tag as ProcessRow)?.Path;
+        if (row.Tag is ProcessRow process)
+        {
+            contextPath = process.Path;
+            contextPid = process.Pid > 0 ? process.Pid : null;
+            contextName = process.Name;
+        }
     }
 
     private void ProcessMenu_Opening(object? sender, CancelEventArgs e)
     {
         if (!contextRequestedByMouse)
-            contextPath = (processGrid.CurrentRow?.Tag as ProcessRow)?.Path;
+        {
+            if (processGrid.CurrentRow?.Tag is ProcessRow process)
+            {
+                contextPath = process.Path;
+                contextPid = process.Pid > 0 ? process.Pid : null;
+                contextName = process.Name;
+            }
+            else
+            {
+                contextPath = null;
+                contextPid = null;
+                contextName = null;
+            }
+        }
         contextRequestedByMouse = false;
-        e.Cancel = contextPath is null;
+        e.Cancel = contextPid is null;
         showFileItem.Enabled = FileLocationService.CanLocate(contextPath);
         showFileItem.ToolTipText = showFileItem.Enabled ? contextPath : "File path is unavailable or the file no longer exists.";
+        showTaskManagerItem.Enabled = contextPid.HasValue;
+        showTaskManagerItem.ToolTipText = showTaskManagerItem.Enabled
+            ? $"Open Task Manager and select {contextName} (PID {contextPid})"
+            : "Process ID is unavailable.";
     }
 
     private async Task SampleAsync()
