@@ -37,7 +37,9 @@ public sealed class ProcessHistory(int logicalProcessorCount)
             else
             {
                 var elapsed = reading.TimestampSeconds - entry.Last.TimestampSeconds;
-                if (elapsed > 0 && elapsed <= 3 && reading.CpuSeconds is { } cpu &&
+                // Slow refreshes are valid measurements too. Only discard a gap longer
+                // than the history window, whose activity we cannot place within that window.
+                if (elapsed > 0 && elapsed <= WindowSeconds && reading.CpuSeconds is { } cpu &&
                     entry.Last.CpuSeconds is { } previous && cpu >= previous)
                 {
                     // CPU seconds accumulate across cores. Normalize to the whole computer.

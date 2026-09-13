@@ -47,7 +47,8 @@ public sealed class ProcessesView : UserControl
         processGrid.Columns["Average"]!.DefaultCellStyle.Format = "N1";
         processGrid.Columns["Peak"]!.DefaultCellStyle.Format = "N1";
         processGrid.Columns["Ram"]!.DefaultCellStyle.Format = "N1";
-        processGrid.SelectionChanged += (_, _) => { if (!rendering) ShowHistory(); };
+        // SelectionChanged can fire before CurrentRow points to the newly selected row.
+        processGrid.CurrentCellChanged += (_, _) => { if (!rendering) ShowHistory(); };
         processGrid.AccessibleName = "Processes sorted by resource usage";
         pathBox.AccessibleName = "Selected process executable path";
         AddColumn(historyGrid, "Time", "Seconds ago (interval end)", 210, typeof(double));
@@ -87,14 +88,19 @@ public sealed class ProcessesView : UserControl
     {
         if (sampling || IsDisposed || Disposing) return;
         sampling = true;
+        var started = ProcessSampler.NowSeconds;
         try
         {
             var readings = await Task.Run(sampler.Read);
             if (IsDisposed || Disposing) return;
             lastSampleTime = ProcessSampler.NowSeconds;
-            Render(history.Update(readings, lastSampleTime));
-            status.Text = $"Updated {DateTime.Now:HH:mm:ss} • {readings.Count} processes • " +
-                "CPU: share of all logical processors • RAM: working set";
+            var rows = history.Update(readings, lastSampleTime);
+            Render(rows);
+            var measured = rows.Count(row => row.CpuPercent.HasValue);
+            var readable = readings.Count(reading => reading.Identity.HasValue && reading.CpuSeconds.HasValue);
+            status.Text = $"Updated {DateTime.Now:HH:mm:ss} • Read took {lastSampleTime - started:0.0} s • " +
+                $"CPU measured: {measured}/{readings.Count}; counters readable: {readable} • " +
+                (measured == 0 && readable > 0 ? "Waiting for the next sample" : "CPU: share of all logical processors");
         }
         catch (Exception ex)
         {

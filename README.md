@@ -34,7 +34,7 @@ RAM is the working set, including shared pages; it is not private memory or a su
 **—** means a value is not available yet or could not be read. Protected processes may have no
 path or CPU reading. **Not observed** means a process was absent from the latest successful scan;
 its history remains for up to 60 seconds. PID and start time distinguish separate process lifetimes.
-Processes that start and exit between scans may be missed. Sampling gaps over three seconds are
+Processes that start and exit between scans may be missed. Sampling gaps longer than the 60-second history window are
 excluded from CPU calculations, and averages use only valid measured intervals, weighted by time.
 History is held in memory and disappears when the app closes.
 

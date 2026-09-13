@@ -43,8 +43,8 @@ gaps.Update([Reading(0, 0)], 0);
 gaps.Update([Reading(1, null)], 1);
 Check(gaps.Update([Reading(2, 8)], 2).Single().CpuPercent is null,
     "Inaccessible CPU reading creates a gap");
-Check(gaps.Update([Reading(7, 16)], 7).Single().CpuPercent is null,
-    "Long sampling pause is not presented as a one-second sample");
+Check(gaps.Update([Reading(7, 16)], 7).Single().CpuPercent == 20,
+    "A slow five-second refresh still computes CPU using the actual elapsed time");
 Check(gaps.Update([Reading(8, 1)], 8).Single().CpuPercent is null,
     "Counter reset is not negative CPU usage");
 gaps.BreakSampling();
@@ -57,6 +57,18 @@ var limited = gaps.Update([Reading(12, 4) with { StartTimeUtcTicks = null }], 12
     .Single(r => r.Identity is null);
 Check(limited.Status == "Limited access" && limited.CpuPercent is null && limited.MemoryMiB == 1,
     "Unknown process identity preserves accessible RAM without fabricated history");
+
+var slowRefresh = new ProcessHistory(8);
+slowRefresh.Update([Reading(0, 0)], 0);
+var slowRow = slowRefresh.Update([Reading(5, 10)], 5).Single();
+Check(slowRow.CpuPercent == 25 && slowRow.History.Single().End - slowRow.History.Single().Start == 5,
+    "Slow sample retains its real duration in history");
+Check(slowRefresh.Update([Reading(10, 10)], 10).Single().CpuPercent == 0,
+    "An idle process displays zero after a slow refresh, not a dash");
+Check(slowRefresh.Update([Reading(71, 12)], 71).Single().CpuPercent is null,
+    "A pause longer than the history window starts a new CPU baseline");
+Check(slowRefresh.Update([Reading(76, 22)], 76).Single().CpuPercent == 25,
+    "CPU recovers on the next sample after a long pause");
 
 if (args.Contains("--process-live"))
 {
