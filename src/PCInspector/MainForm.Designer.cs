@@ -45,7 +45,8 @@ partial class MainForm
         heading.Controls.Add(new Label
         {
             Text = "Your computer at a glance", ForeColor = FluentTheme.Muted,
-            Font = FluentTheme.BodyFont, Dock = DockStyle.Bottom, Height = 25
+            Font = FluentTheme.BodyFont, Location = new Point(0, 40), Size = new Size(520, 25),
+            AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty
         });
         heading.Controls.Add(new Label
         {
