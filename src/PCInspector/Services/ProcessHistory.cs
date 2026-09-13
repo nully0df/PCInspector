@@ -26,7 +26,8 @@ public sealed class ProcessHistory(int logicalProcessorCount)
             {
                 rows.Add(new ProcessRow(null, reading.Pid, reading.Name, null, null, null,
                     reading.WorkingSetBytes / (1024d * 1024), reading.Path ?? "Unavailable",
-                    "Limited access", []));
+                    "Limited access", [], reading.CommandLine, reading.ParentPid,
+                    reading.ParentName, reading.GpuPercent));
                 continue;
             }
 
@@ -91,6 +92,7 @@ public sealed class ProcessHistory(int logicalProcessorCount)
         double? peak = history.Length > 0 ? history.Max(interval => interval.Percent) : null;
         return new ProcessRow(entry.Last.Identity, entry.Last.Pid, entry.Last.Name, current, average, peak,
             status == "Not observed" ? null : entry.Last.WorkingSetBytes / (1024d * 1024),
-            entry.Last.Path ?? "Unavailable", status, history);
+            entry.Last.Path ?? "Unavailable", status, history,
+            entry.Last.CommandLine, entry.Last.ParentPid, entry.Last.ParentName, entry.Last.GpuPercent);
     }
 }

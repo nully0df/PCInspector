@@ -24,12 +24,12 @@ internal static class ProcessUiChecks
                     .Single(control => control.AccessibleName == "Processes sorted by resource usage");
                 foreach (var (pid, value) in new (int, double?)[] { (1, null), (2, 60), (3, 0), (4, 9.5), (5, null) })
                 {
-                    var index = grid.Rows.Add("Example", pid, value!, value!, value!, value!, "Limited access", "Unavailable");
+                    var index = grid.Rows.Add("Example", pid, value!, value!, value!, value!, value!, "Limited access", "Unavailable");
                     grid.Rows[index].Tag = new ProcessRow(null, pid, "Example", value, value, value, value,
                         "Unavailable", "Limited access", []);
                 }
 
-                foreach (var name in new[] { "Cpu", "Average", "Peak", "Ram" })
+                foreach (var name in new[] { "Cpu", "Gpu", "Average", "Peak", "Ram" })
                     foreach (var direction in new[] { ListSortDirection.Ascending, ListSortDirection.Descending })
                     {
                         grid.Sort(grid.Columns[name]!, direction);

@@ -1,18 +1,24 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Management;
 using PCInspector.Models;
 
 namespace PCInspector.Services;
 
-public sealed class ProcessSampler
+public sealed class ProcessSampler : IDisposable
 {
     private readonly Dictionary<ProcessIdentity, string> paths = [];
+    private readonly GpuUsageService gpuUsage = new();
+    private Dictionary<int, ProcessMetadata> metadata = [];
+    private double metadataReadAt;
 
     public static double NowSeconds => (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
 
     public List<ProcessReading> Read()
     {
         var readings = new List<ProcessReading>();
+        RefreshMetadata();
+        var gpuByPid = gpuUsage.Read();
         var seen = new HashSet<ProcessIdentity>();
         foreach (var process in Process.GetProcesses())
         {
@@ -37,7 +43,13 @@ public sealed class ProcessSampler
                             if (path is not null) paths[identity] = path;
                         }
                     }
-                    readings.Add(new ProcessReading(process.Id, name, start, timestamp, cpu, ram, path));
+                    metadata.TryGetValue(process.Id, out var processMetadata);
+                    var parentName = processMetadata?.ParentPid is { } parentPid && metadata.TryGetValue(parentPid, out var parent)
+                        ? parent.Name : null;
+                    readings.Add(new ProcessReading(process.Id, name, start, timestamp, cpu, ram, path,
+                        processMetadata?.CommandLine, processMetadata?.ParentPid,
+                        parentName,
+                        gpuByPid.TryGetValue(process.Id, out var gpu) ? gpu : null));
                 }
                 catch (Exception ex) when (IsAccessError(ex))
                 {
@@ -49,6 +61,21 @@ public sealed class ProcessSampler
             paths.Remove(identity);
         return readings;
     }
+
+    private void RefreshMetadata()
+    {
+        var now = NowSeconds;
+        if (now - metadataReadAt < 5) return;
+        metadataReadAt = now;
+        try { metadata = ProcessMetadataService.Read(); }
+        catch (Exception ex) when (ex is ManagementException or UnauthorizedAccessException
+            or System.Runtime.InteropServices.COMException or TimeoutException)
+        {
+            metadata = [];
+        }
+    }
+
+    public void Dispose() => gpuUsage.Dispose();
 
     private static T? TryRead<T>(Func<T> read)
     {

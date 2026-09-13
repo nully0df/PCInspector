@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using PCInspector.Models;
 using PCInspector.Services;
+using System.Text;
 
 namespace PCInspector;
 
@@ -13,10 +14,13 @@ public sealed class ProcessesView : UserControl
     private readonly DataGridView historyGrid = CreateGrid();
     private readonly Label status = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly TextBox pathBox = new() { Dock = DockStyle.Fill, ReadOnly = true };
+    private readonly TextBox investigationBox = new() { Dock = DockStyle.Fill, ReadOnly = true,
+        Multiline = true, ScrollBars = ScrollBars.Vertical };
     private readonly Label detail = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly ContextMenuStrip processMenu = new();
     private readonly ToolStripMenuItem showFileItem = new("Show file in folder");
     private readonly ToolStripMenuItem showTaskManagerItem = new("Open in Task Manager");
+    private readonly FluentButton exportButton = new() { Text = "Export report", Width = 140, Height = 38 };
     private readonly Func<string, Task> showFileAsync;
     private readonly Func<int, string, Task> showTaskManagerAsync;
     private string? contextPath;
@@ -26,6 +30,8 @@ public sealed class ProcessesView : UserControl
     private bool sampling;
     private bool rendering;
     private double lastSampleTime;
+    private int investigationPid;
+    private int investigationVersion;
 
     public ProcessesView(Func<string, Task>? showFileAsync = null,
         Func<int, string, Task>? showTaskManagerAsync = null)
@@ -54,6 +60,7 @@ public sealed class ProcessesView : UserControl
         AddColumn(processGrid, "Name", "Process", 180);
         AddColumn(processGrid, "Pid", "PID", 65, typeof(int));
         AddColumn(processGrid, "Cpu", "CPU %", 110, typeof(double));
+        AddColumn(processGrid, "Gpu", "GPU %", 100, typeof(double));
         AddColumn(processGrid, "Average", "Avg %", 115, typeof(double));
         AddColumn(processGrid, "Peak", "Peak %", 115, typeof(double));
         AddColumn(processGrid, "Ram", "RAM MiB", 110, typeof(double));
@@ -64,6 +71,7 @@ public sealed class ProcessesView : UserControl
         processGrid.Columns["Path"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         processGrid.Columns["Path"]!.MinimumWidth = 180;
         processGrid.Columns["Cpu"]!.DefaultCellStyle.Format = "N1";
+        processGrid.Columns["Gpu"]!.DefaultCellStyle.Format = "N1";
         processGrid.Columns["Average"]!.DefaultCellStyle.Format = "N1";
         processGrid.Columns["Peak"]!.DefaultCellStyle.Format = "N1";
         processGrid.Columns["Ram"]!.DefaultCellStyle.Format = "N1";
@@ -125,6 +133,11 @@ public sealed class ProcessesView : UserControl
         pathBox.ForeColor = FluentTheme.Muted;
         pathBox.Font = FluentTheme.CaptionFont;
         processMenu.Font = FluentTheme.BodyFont;
+        investigationBox.AccessibleName = "Selected process investigation details";
+        investigationBox.BorderStyle = BorderStyle.None;
+        investigationBox.BackColor = FluentTheme.Surface;
+        investigationBox.ForeColor = FluentTheme.Text;
+        investigationBox.Font = FluentTheme.CaptionFont;
         AddColumn(historyGrid, "Time", "Seconds ago (interval end)", 210, typeof(double));
         AddColumn(historyGrid, "Duration", "Sample duration, s", 165, typeof(double));
         AddColumn(historyGrid, "Cpu", "CPU %", 95, typeof(double));
@@ -143,22 +156,32 @@ public sealed class ProcessesView : UserControl
         var historyCard = new FluentCard { Dock = DockStyle.Fill, Margin = Padding.Empty };
         var historyLayout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, BackColor = FluentTheme.Surface, ColumnCount = 1, RowCount = 3,
+            Dock = DockStyle.Fill, BackColor = FluentTheme.Surface, ColumnCount = 1, RowCount = 4,
             Margin = Padding.Empty
         };
         historyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         historyLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         historyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         historyLayout.Controls.Add(detail, 0, 0);
         historyLayout.Controls.Add(pathBox, 0, 1);
-        historyLayout.Controls.Add(historyGrid, 0, 2);
+        historyLayout.Controls.Add(investigationBox, 0, 2);
+        historyLayout.Controls.Add(historyGrid, 0, 3);
         historyCard.Controls.Add(historyLayout);
-        layout.Controls.Add(new Label
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = Padding.Empty };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        header.Controls.Add(new Label
         {
             Text = "Processes", Font = FluentTheme.HeadingFont, Dock = DockStyle.Fill,
             AutoSize = true, Margin = Padding.Empty
         }, 0, 0);
+        exportButton.Anchor = AnchorStyles.Right;
+        exportButton.AccessibleName = "Export process investigation report";
+        exportButton.Click += async (_, _) => await ExportReportAsync();
+        header.Controls.Add(exportButton, 1, 0);
+        layout.Controls.Add(header, 0, 0);
         layout.Controls.Add(status, 0, 1);
         layout.Controls.Add(processCard, 0, 2);
         layout.Controls.Add(historyCard, 0, 3);
@@ -178,6 +201,7 @@ public sealed class ProcessesView : UserControl
         {
             timer.Dispose();
             processMenu.Dispose();
+            sampler.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -270,8 +294,8 @@ public sealed class ProcessesView : UserControl
             processGrid.Rows.Clear();
             foreach (var row in rows)
             {
-                var index = processGrid.Rows.Add(row.Name, row.Pid, row.CpuPercent!, row.AverageCpuPercent!,
-                    row.PeakCpuPercent!, row.MemoryMiB!, row.Status, row.Path);
+                var index = processGrid.Rows.Add(row.Name, row.Pid, row.CpuPercent!, row.GpuPercent!,
+                    row.AverageCpuPercent!, row.PeakCpuPercent!, row.MemoryMiB!, row.Status, row.Path);
                 processGrid.Rows[index].Tag = row;
             }
             processGrid.Sort(processGrid.Columns[sortColumn]!, direction);
@@ -300,6 +324,9 @@ public sealed class ProcessesView : UserControl
         {
             pathBox.Text = "";
             detail.Text = "Select a process to see its CPU samples.";
+            investigationBox.Text = "";
+            investigationPid = 0;
+            investigationVersion++;
             return;
         }
         pathBox.Text = row.Path;
@@ -309,6 +336,93 @@ public sealed class ProcessesView : UserControl
         foreach (var interval in row.History.Reverse())
             historyGrid.Rows.Add(Math.Max(0, lastSampleTime - interval.End),
                 interval.End - interval.Start, interval.Percent);
+        if (investigationPid != row.Pid)
+        {
+            investigationPid = row.Pid;
+            var version = ++investigationVersion;
+            investigationBox.Text = BasicInvestigation(row);
+            _ = LoadInvestigationAsync(row, version);
+        }
+    }
+
+    private static string BasicInvestigation(ProcessRow row)
+    {
+        var started = row.Identity is { } identity
+            ? new DateTime(identity.StartTimeUtcTicks, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "Unavailable";
+        return $"Command line: {row.CommandLine ?? "Unavailable"}{Environment.NewLine}" +
+            $"Parent: {(row.ParentName is null ? "Unavailable" : $"{row.ParentName} (PID {row.ParentPid})")}{Environment.NewLine}" +
+            $"Started: {started}{Environment.NewLine}" +
+            $"GPU: {(row.GpuPercent is { } gpu ? $"{gpu:N1}%" : "Unavailable")}{Environment.NewLine}" +
+            "Signature, hash and network connections: loading...";
+    }
+
+    private async Task LoadInvestigationAsync(ProcessRow row, int version)
+    {
+        try
+        {
+            var fileTask = FileAnalysisService.AnalyzeAsync(row.Path);
+            var networkTask = Task.Run(() => NetworkConnectionService.ReadForProcess(row.Pid));
+            await Task.WhenAll(fileTask, networkTask);
+            if (IsDisposed || Disposing || version != investigationVersion || investigationPid != row.Pid) return;
+
+            var builder = new StringBuilder(BasicInvestigation(row));
+            var analysis = await fileTask;
+            builder.AppendLine();
+            if (analysis is null)
+                builder.Append("Signature/hash: unavailable");
+            else
+            {
+                builder.AppendLine($"Publisher: {analysis.Publisher}");
+                builder.AppendLine($"Signature: {analysis.Signature}");
+                builder.Append($"SHA-256: {analysis.Sha256}");
+            }
+
+            var connections = await networkTask;
+            builder.AppendLine();
+            builder.Append("Network: ");
+            if (connections.Count == 0)
+                builder.Append("no active TCP/UDP endpoints");
+            else
+            {
+                builder.AppendLine();
+                foreach (var connection in connections.Take(8))
+                    builder.AppendLine($"  {connection.Protocol} {connection.LocalEndpoint} → {connection.RemoteEndpoint} ({connection.State})");
+                if (connections.Count > 8) builder.Append($"  ... and {connections.Count - 8} more");
+            }
+            investigationBox.Text = builder.ToString().TrimEnd();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            if (!IsDisposed && !Disposing && version == investigationVersion)
+                investigationBox.Text = $"{BasicInvestigation(row)}{Environment.NewLine}{Environment.NewLine}" +
+                    $"Additional details unavailable ({ex.GetType().Name}).";
+        }
+    }
+
+    private async Task ExportReportAsync()
+    {
+        var rows = processGrid.Rows.Cast<DataGridViewRow>()
+            .Select(row => row.Tag as ProcessRow).Where(row => row is not null).Cast<ProcessRow>().ToArray();
+        if (rows.Length == 0) return;
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "JSON report (*.json)|*.json|HTML report (*.html)|*.html",
+            DefaultExt = "json", AddExtension = true,
+            FileName = $"pcinspector-processes-{DateTime.Now:yyyyMMdd-HHmmss}"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            await Task.Run(() => ExportReportService.Write(dialog.FileName, rows));
+            if (!IsDisposed && !Disposing) status.Text = $"Report exported: {dialog.FileName}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (!IsDisposed && !Disposing)
+                MessageBox.Show(this, $"Could not export the report.\n{ex.Message}",
+                    "PCInspector", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
     }
 
     private void CompareMissingValues(object? sender, DataGridViewSortCompareEventArgs e)

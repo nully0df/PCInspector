@@ -14,9 +14,14 @@ Use it to inspect the computer and identify processes consuming CPU and memory.
 - System uptime since the Windows boot time.
 - Refresh button, background collection and partial results when a section fails.
 - Live process list: CPU%, working-set RAM, PID and executable path.
-- Sortable numeric columns, average/peak CPU and per-process samples for the last minute.
+- Sortable numeric columns, GPU%, average/peak CPU and per-process samples for the last minute.
+- Process command line, parent process, start time and investigation details.
+- File publisher, signature status and SHA-256 hash for an accessible executable.
+- Active TCP/UDP endpoints grouped by process PID.
+- Startup entries from Run keys, automatic services and scheduled tasks.
 - Right-click a process to show its executable selected in File Explorer.
 - Right-click a process to open Task Manager and select the same PID in Details.
+- JSON/HTML export of the current process table and its CPU history.
 - Fluent-inspired light theme with summary cards, rounded panels and quieter tables.
 
 ![System overview with demonstration data](docs/system-demo.png)
@@ -27,8 +32,10 @@ The screenshots use demonstration hardware, process names, paths and readings.
 
 ## Inspect a busy computer
 
-Open **Processes**, wait for two samples, then sort by **CPU %** or **RAM MiB**.
+Open **Processes**, wait for two samples, then sort by **CPU %**, **GPU %** or **RAM MiB**.
 Select a row to inspect its CPU history and copy the full executable path from the box below.
+The details panel also shows the command line, parent process, start time, file signature,
+SHA-256 and active network endpoints for the selected PID.
 Right-click a process and choose **Show file in folder** to locate its executable without running it.
 The item is disabled for unavailable or missing files. The menu keeps the clicked process's path
 even if the table refreshes while the menu is open.
@@ -37,6 +44,8 @@ This uses Windows UI Automation because Task Manager has no documented command-l
 selecting a process. If a particular Windows build does not expose its process rows to UI Automation,
 Task Manager still opens and PCInspector reports that the row could not be selected.
 Use **Avg %** and **Peak %** to find sustained load and recent spikes over the last 60 seconds.
+Use the **Startup** tab to review persistence locations before changing anything.
+**Export report** saves the visible process evidence as JSON or HTML.
 The first minute fills gradually; the detail line shows the actual measured duration.
 
 Sampling runs about once a second while the application is open, including on the System tab.
@@ -54,8 +63,10 @@ Processes that start and exit between scans may be missed. Sampling gaps longer 
 excluded from CPU calculations, and averages use only valid measured intervals, weighted by time.
 History is held in memory and disappears when the app closes.
 
-High load is a lead for investigation, not a malware verdict. This version does not inspect GPU
-usage, signatures, network connections or persistence, and cannot guarantee detection of hidden malware.
+High load is a lead for investigation, not a malware verdict. GPU Engine counters,
+WMI metadata, IP Helper tables and Windows registry/service/task data can be unavailable
+without the required permissions or on unsupported Windows builds. PCInspector does not
+guarantee detection of hidden malware and does not modify or terminate processes.
 
 ## Requirements
 
@@ -97,6 +108,13 @@ src/PCInspector/
   Services/ProcessHistory.cs    CPU deltas and rolling 60-second history
   Services/FileLocationService.cs Opens Explorer with the executable selected
   Services/TaskManagerService.cs Opens Task Manager and selects a process through UI Automation
+  Services/ProcessMetadataService.cs Reads command line and parent process metadata
+  Services/GpuUsageService.cs  Reads per-process GPU Engine utilization counters
+  Services/NetworkConnectionService.cs Reads TCP/UDP endpoints by PID
+  Services/FileAnalysisService.cs Computes signature status and SHA-256
+  Services/PersistenceService.cs Reads startup and persistence locations
+  Services/ExportReportService.cs Writes JSON and HTML process reports
+  StartupView.cs               Startup and persistence table
 tests/PCInspector.Checks/        Executable checks without a test framework
 docs/LEARNING.ru.md              Guided code walkthrough in Russian
 ```
@@ -112,8 +130,12 @@ the window responsive while WMI reads system information.
 | Windows, RAM, boot time | WMI `Win32_OperatingSystem` |
 | CPU | WMI `Win32_Processor` |
 | Graphics adapter names and drivers | WMI `Win32_VideoController` |
+| Command line and parent process | WMI `Win32_Process` |
 | Local volumes | .NET `DriveInfo` |
 | Local IPv4 addresses | .NET `NetworkInterface` |
+| Per-process GPU usage | Windows PDH `GPU Engine` counter |
+| TCP/UDP endpoints | IP Helper `GetExtended*Table` |
+| Startup items | Registry, WMI `Win32_Service`, `schtasks.exe` |
 
 RAM and disk sizes use GiB (1 GiB = 1,073,741,824 bytes). Usable RAM can be lower
 than the physically installed RAM. Drives represent mounted volumes, not physical
@@ -153,12 +175,14 @@ Manual checks:
 6. Close the window during collection; the application should exit without an error dialog.
 7. Open Processes, select a process, sort by CPU or RAM and wait: selection and sorting should persist.
 8. Start and close a harmless app. Its row should become Not observed and disappear after a minute.
+9. Select a process and review command line, parent, signature, hash and network endpoints.
+10. Open Startup and export a JSON or HTML process report.
 
 ## Next steps
 
-- Export a snapshot as TXT and JSON.
-- Extend process details with launch arguments and parent process.
-- Add IPv6 display and cancellation for long reads.
+- Add IPv6 endpoint display.
+- Add baseline snapshots and a diff view for repeated inspections.
+- Add cancellation for long WMI and scheduled-task scans.
 
 ## Learning notes
 

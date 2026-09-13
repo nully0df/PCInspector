@@ -14,6 +14,7 @@ public partial class MainForm : Form
     private async void MainForm_Shown(object? sender, EventArgs e)
     {
         processesView.StartMonitoring();
+        startupView.StartLoading();
         await RefreshInfoAsync();
     }
 

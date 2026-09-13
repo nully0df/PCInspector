@@ -11,6 +11,7 @@ partial class MainForm
     private DataGridView disksGrid = null!;
     private TextBox warningsBox = null!;
     private ProcessesView processesView = null!;
+    private StartupView startupView = null!;
     private Label memoryValue = null!;
     private Label memoryCaption = null!;
     private Label uptimeValue = null!;
@@ -32,6 +33,7 @@ partial class MainForm
         var tabs = new FluentTabs { Dock = DockStyle.Fill };
         var systemTab = new TabPage("System") { BackColor = FluentTheme.Canvas };
         var processesTab = new TabPage("Processes") { BackColor = FluentTheme.Canvas };
+        var startupTab = new TabPage("Startup") { BackColor = FluentTheme.Canvas };
         var layout = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(24, 18, 24, 18),
@@ -114,10 +116,13 @@ partial class MainForm
             foreach (Control control in layout.Controls) control.Width = width;
         };
         processesView = new ProcessesView();
+        startupView = new StartupView();
         systemTab.Controls.Add(layout);
         processesTab.Controls.Add(processesView);
+        startupTab.Controls.Add(startupView);
         tabs.TabPages.Add(systemTab);
         tabs.TabPages.Add(processesTab);
+        tabs.TabPages.Add(startupTab);
         Controls.Add(tabs);
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
