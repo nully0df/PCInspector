@@ -101,5 +101,12 @@ if (args.Contains("--live"))
     Check(snapshot.Warnings.Count == 0, "No collection warnings on this computer");
 }
 
+if (args.Contains("--ui"))
+{
+    var uiFailures = ProcessUiChecks.Run();
+    foreach (var failure in uiFailures) Console.WriteLine(failure);
+    Check(uiFailures.Count == 0, "UI: missing values last in eight numeric sorts and explicit missing-data labels");
+}
+
 Console.WriteLine($"Finished: {failures.Count} failure(s).");
 return failures.Count == 0 ? 0 : 1;

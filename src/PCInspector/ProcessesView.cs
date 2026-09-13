@@ -35,10 +35,10 @@ public sealed class ProcessesView : UserControl
         status.Padding = new Padding(0, 0, 0, 8);
         AddColumn(processGrid, "Name", "Process", 150);
         AddColumn(processGrid, "Pid", "PID", 65, typeof(int));
-        AddColumn(processGrid, "Cpu", "CPU %", 75, typeof(double));
+        AddColumn(processGrid, "Cpu", "CPU %", 110, typeof(double));
         AddColumn(processGrid, "Average", "Avg / 60 s %", 100, typeof(double));
         AddColumn(processGrid, "Peak", "Peak / 60 s %", 105, typeof(double));
-        AddColumn(processGrid, "Ram", "RAM MiB", 90, typeof(double));
+        AddColumn(processGrid, "Ram", "RAM MiB", 110, typeof(double));
         AddColumn(processGrid, "Status", "State", 115);
         AddColumn(processGrid, "Path", "Executable path", 230);
         processGrid.Columns["Path"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
@@ -49,6 +49,14 @@ public sealed class ProcessesView : UserControl
         processGrid.Columns["Ram"]!.DefaultCellStyle.Format = "N1";
         // SelectionChanged can fire before CurrentRow points to the newly selected row.
         processGrid.CurrentCellChanged += (_, _) => { if (!rendering) ShowHistory(); };
+        processGrid.SortCompare += CompareMissingValues;
+        processGrid.CellFormatting += FormatMissingValue;
+        processGrid.Sorted += (_, _) =>
+        {
+            // A user-initiated sort should show the start of the new order.
+            if (!rendering && processGrid.Rows.Count > 0 && processGrid.DisplayedRowCount(false) > 0)
+                processGrid.FirstDisplayedScrollingRowIndex = 0;
+        };
         processGrid.AccessibleName = "Processes sorted by resource usage";
         pathBox.AccessibleName = "Selected process executable path";
         AddColumn(historyGrid, "Time", "Seconds ago (interval end)", 210, typeof(double));
@@ -61,7 +69,7 @@ public sealed class ProcessesView : UserControl
             column.SortMode = DataGridViewColumnSortMode.NotSortable;
         }
         historyGrid.AccessibleName = "Selected process CPU history for the last minute";
-        detail.Text = "Select a process to see its CPU samples. — means no measurement.";
+        detail.Text = "Select a process to see its CPU samples. Missing values show why they are unavailable.";
         detail.Padding = new Padding(0, 8, 0, 4);
         layout.Controls.Add(status, 0, 0);
         layout.Controls.Add(processGrid, 0, 1);
@@ -142,7 +150,7 @@ public sealed class ProcessesView : UserControl
                 processGrid.CurrentCell = match.Cells[0];
                 match.Selected = true;
             }
-            if (scroll >= 0 && scroll < processGrid.Rows.Count)
+            if (scroll >= 0 && scroll < processGrid.Rows.Count && processGrid.DisplayedRowCount(false) > 0)
                 processGrid.FirstDisplayedScrollingRowIndex = scroll;
         }
         finally { rendering = false; }
@@ -161,10 +169,40 @@ public sealed class ProcessesView : UserControl
         pathBox.Text = row.Path;
         var coveredSeconds = row.History.Sum(interval => interval.End - interval.Start);
         detail.Text = $"{row.Name} (PID {row.Pid}) • {coveredSeconds:0.0} s measured in the last minute • " +
-            "— = unavailable / waiting; Not observed = absent from the latest scan";
+            "No access = details unavailable; Not observed = absent from the latest scan";
         foreach (var interval in row.History.Reverse())
             historyGrid.Rows.Add(Math.Max(0, lastSampleTime - interval.End),
                 interval.End - interval.Start, interval.Percent);
+    }
+
+    private void CompareMissingValues(object? sender, DataGridViewSortCompareEventArgs e)
+    {
+        if (e.Column.ValueType != typeof(double) || (e.CellValue1 is not null && e.CellValue2 is not null))
+            return;
+
+        // WinForms reverses this result for descending sorts. Compensate so that
+        // unavailable measurements always follow numbers, in either direction.
+        var result = e.CellValue1 is null ? (e.CellValue2 is null ? 0 : 1) : -1;
+        e.SortResult = processGrid.SortOrder == SortOrder.Descending ? -result : result;
+        e.Handled = true;
+    }
+
+    private void FormatMissingValue(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.Value is not null ||
+            processGrid.Columns[e.ColumnIndex].ValueType != typeof(double) ||
+            processGrid.Rows[e.RowIndex].Tag is not ProcessRow row)
+            return;
+
+        var column = processGrid.Columns[e.ColumnIndex].Name;
+        e.Value = column is "Average" or "Peak" ? "No samples" : row.Status switch
+        {
+            "Limited access" => "No access",
+            "Not observed" => "Not seen",
+            "Measuring..." when column == "Cpu" => "Waiting",
+            _ => "Unavailable"
+        };
+        e.FormattingApplied = true;
     }
 
     private static void AddColumn(DataGridView grid, string name, string title, int width, Type? type = null)

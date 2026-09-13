@@ -31,8 +31,11 @@ CPU% is processor time divided by elapsed time and the logical processor count r
 PCInspector. It measures time, so it may differ from Task Manager's frequency-adjusted figures.
 RAM is the working set, including shared pages; it is not private memory or a sum of system RAM.
 
-**—** means a value is not available yet or could not be read. Protected processes may have no
-path or CPU reading. **Not observed** means a process was absent from the latest successful scan;
+Missing process values have explicit labels: **Waiting** for a second CPU sample,
+**No access** for unavailable process details, **No samples** for empty history, and
+**Not seen** for a process absent from the latest scan. Numeric sorting always places missing
+values after measured values, in both directions. Protected processes may have no path or CPU
+reading. **Not observed** means a process was absent from the latest successful scan;
 its history remains for up to 60 seconds. PID and start time distinguish separate process lifetimes.
 Processes that start and exit between scans may be missed. Sampling gaps longer than the 60-second history window are
 excluded from CPU calculations, and averages use only valid measured intervals, weighted by time.
@@ -113,10 +116,12 @@ WMI enumeration has a timeout, but this is not a hard deadline for the entire re
 dotnet run --project tests/PCInspector.Checks --configuration Release
 dotnet run --project tests/PCInspector.Checks --configuration Release -- --live
 dotnet run --project tests/PCInspector.Checks --configuration Release -- --process-live
+dotnet run --project tests/PCInspector.Checks --configuration Release -- --ui
 ```
 
 The first command checks formatting, CPU math, PID reuse, gaps and rolling history.
 `--process-live` also checks attribution of real CPU work, RAM and the test process path.
+`--ui` checks that missing values stay below numbers in both sort directions and explains missing data.
 `--live` checks the real Windows
 collector for required data and sensible values; it does not print machine names or IPs.
 It expects a working local WMI service and at least one ready local drive.
