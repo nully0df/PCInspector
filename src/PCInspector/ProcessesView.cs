@@ -32,6 +32,7 @@ public sealed class ProcessesView : UserControl
     private double lastSampleTime;
     private int investigationPid;
     private int investigationVersion;
+    private IReadOnlyList<ProcessRow> latestRows = [];
 
     public ProcessesView(Func<string, Task>? showFileAsync = null,
         Func<int, string, Task>? showTaskManagerAsync = null)
@@ -288,6 +289,7 @@ public sealed class ProcessesView : UserControl
         var direction = processGrid.SortOrder == SortOrder.Ascending
             ? ListSortDirection.Ascending : ListSortDirection.Descending;
         var scroll = processGrid.FirstDisplayedScrollingRowIndex;
+        latestRows = rows;
         rendering = true;
         try
         {
@@ -345,16 +347,31 @@ public sealed class ProcessesView : UserControl
         }
     }
 
-    private static string BasicInvestigation(ProcessRow row)
+    private string BasicInvestigation(ProcessRow row)
     {
         var started = row.Identity is { } identity
             ? new DateTime(identity.StartTimeUtcTicks, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
             : "Unavailable";
         return $"Command line: {row.CommandLine ?? "Unavailable"}{Environment.NewLine}" +
-            $"Parent: {(row.ParentName is null ? "Unavailable" : $"{row.ParentName} (PID {row.ParentPid})")}{Environment.NewLine}" +
+            $"Process tree: {ProcessTree(row)}{Environment.NewLine}" +
             $"Started: {started}{Environment.NewLine}" +
             $"GPU: {(row.GpuPercent is { } gpu ? $"{gpu:N1}%" : "Unavailable")}{Environment.NewLine}" +
             "Signature, hash and network connections: loading...";
+    }
+
+    private string ProcessTree(ProcessRow row)
+    {
+        var chain = new List<string> { $"{row.Name} (PID {row.Pid})" };
+        var parentPid = row.ParentPid;
+        for (var level = 0; level < 6 && parentPid is { } pid; level++)
+        {
+            var parent = latestRows.FirstOrDefault(candidate => candidate.Pid == pid);
+            if (parent is null) break;
+            chain.Add($"{parent.Name} (PID {parent.Pid})");
+            parentPid = parent.ParentPid;
+        }
+        chain.Reverse();
+        return string.Join(" → ", chain);
     }
 
     private async Task LoadInvestigationAsync(ProcessRow row, int version)
