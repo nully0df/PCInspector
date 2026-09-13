@@ -17,7 +17,7 @@ internal static class ProcessUiChecks
             {
                 string? openedPath = null;
                 using var view = new ProcessesView(path => { openedPath = path; return Task.CompletedTask; });
-                var grid = view.Controls[0].Controls.OfType<DataGridView>()
+                var grid = Descendants(view).OfType<DataGridView>()
                     .Single(control => control.AccessibleName == "Processes sorted by resource usage");
                 foreach (var (pid, value) in new (int, double?)[] { (1, null), (2, 60), (3, 0), (4, 9.5), (5, null) })
                 {
@@ -94,5 +94,14 @@ internal static class ProcessUiChecks
         thread.Start();
         thread.Join();
         return failures;
+    }
+
+    private static IEnumerable<Control> Descendants(Control parent)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            yield return child;
+            foreach (var descendant in Descendants(child)) yield return descendant;
+        }
     }
 }

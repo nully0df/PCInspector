@@ -27,25 +27,33 @@ public sealed class ProcessesView : UserControl
     {
         this.showFileAsync = showFileAsync ?? FileLocationService.ShowAsync;
         Dock = DockStyle.Fill;
+        Font = FluentTheme.BodyFont;
+        BackColor = FluentTheme.Canvas;
+        ForeColor = FluentTheme.Text;
+        FluentTheme.StyleGrid(processGrid);
+        FluentTheme.StyleGrid(historyGrid);
         var layout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 5
+            Dock = DockStyle.Fill, Padding = new Padding(24, 18, 24, 20), ColumnCount = 1, RowCount = 4
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
         status.Text = "Starting process monitor...";
-        status.Padding = new Padding(0, 0, 0, 8);
-        AddColumn(processGrid, "Name", "Process", 150);
+        status.Font = FluentTheme.CaptionFont;
+        status.ForeColor = FluentTheme.Muted;
+        status.Padding = new Padding(0, 0, 0, 14);
+        AddColumn(processGrid, "Name", "Process", 180);
         AddColumn(processGrid, "Pid", "PID", 65, typeof(int));
         AddColumn(processGrid, "Cpu", "CPU %", 110, typeof(double));
-        AddColumn(processGrid, "Average", "Avg / 60 s %", 100, typeof(double));
-        AddColumn(processGrid, "Peak", "Peak / 60 s %", 105, typeof(double));
+        AddColumn(processGrid, "Average", "Avg %", 115, typeof(double));
+        AddColumn(processGrid, "Peak", "Peak %", 115, typeof(double));
         AddColumn(processGrid, "Ram", "RAM MiB", 110, typeof(double));
-        AddColumn(processGrid, "Status", "State", 115);
+        AddColumn(processGrid, "Status", "State", 140);
+        processGrid.Columns["Average"]!.ToolTipText = "Average CPU over measured intervals in the last 60 seconds";
+        processGrid.Columns["Peak"]!.ToolTipText = "Peak CPU over measured intervals in the last 60 seconds";
         AddColumn(processGrid, "Path", "Executable path", 230);
         processGrid.Columns["Path"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         processGrid.Columns["Path"]!.MinimumWidth = 180;
@@ -90,6 +98,11 @@ public sealed class ProcessesView : UserControl
             }
         };
         pathBox.AccessibleName = "Selected process executable path";
+        pathBox.BorderStyle = BorderStyle.None;
+        pathBox.BackColor = FluentTheme.Surface;
+        pathBox.ForeColor = FluentTheme.Muted;
+        pathBox.Font = FluentTheme.CaptionFont;
+        processMenu.Font = FluentTheme.BodyFont;
         AddColumn(historyGrid, "Time", "Seconds ago (interval end)", 210, typeof(double));
         AddColumn(historyGrid, "Duration", "Sample duration, s", 165, typeof(double));
         AddColumn(historyGrid, "Cpu", "CPU %", 95, typeof(double));
@@ -101,12 +114,32 @@ public sealed class ProcessesView : UserControl
         }
         historyGrid.AccessibleName = "Selected process CPU history for the last minute";
         detail.Text = "Select a process to see its CPU samples. Missing values show why they are unavailable.";
-        detail.Padding = new Padding(0, 8, 0, 4);
-        layout.Controls.Add(status, 0, 0);
-        layout.Controls.Add(processGrid, 0, 1);
-        layout.Controls.Add(detail, 0, 2);
-        layout.Controls.Add(pathBox, 0, 3);
-        layout.Controls.Add(historyGrid, 0, 4);
+        detail.Font = FluentTheme.CaptionFont;
+        detail.Padding = new Padding(0, 0, 0, 6);
+        var processCard = new FluentCard { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 12) };
+        processCard.Controls.Add(processGrid);
+        var historyCard = new FluentCard { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        var historyLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, BackColor = FluentTheme.Surface, ColumnCount = 1, RowCount = 3,
+            Margin = Padding.Empty
+        };
+        historyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        historyLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        historyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        historyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        historyLayout.Controls.Add(detail, 0, 0);
+        historyLayout.Controls.Add(pathBox, 0, 1);
+        historyLayout.Controls.Add(historyGrid, 0, 2);
+        historyCard.Controls.Add(historyLayout);
+        layout.Controls.Add(new Label
+        {
+            Text = "Processes", Font = FluentTheme.HeadingFont, Dock = DockStyle.Fill,
+            AutoSize = true, Margin = Padding.Empty
+        }, 0, 0);
+        layout.Controls.Add(status, 0, 1);
+        layout.Controls.Add(processCard, 0, 2);
+        layout.Controls.Add(historyCard, 0, 3);
         Controls.Add(layout);
         timer.Tick += async (_, _) => await SampleAsync();
     }

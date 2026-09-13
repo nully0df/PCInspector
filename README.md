@@ -16,10 +16,13 @@ Use it to inspect the computer and identify processes consuming CPU and memory.
 - Live process list: CPU%, working-set RAM, PID and executable path.
 - Sortable numeric columns, average/peak CPU and per-process samples for the last minute.
 - Right-click a process to show its executable selected in File Explorer.
+- Fluent-inspired light theme with summary cards, rounded panels and quieter tables.
+
+![System overview with demonstration data](docs/system-demo.png)
 
 ![Processes tab with demonstration data](docs/processes-demo.png)
 
-The screenshot uses fictional process names, paths and readings.
+The screenshots use demonstration hardware, process names, paths and readings.
 
 ## Inspect a busy computer
 
@@ -28,7 +31,7 @@ Select a row to inspect its CPU history and copy the full executable path from t
 Right-click a process and choose **Show file in folder** to locate its executable without running it.
 The item is disabled for unavailable or missing files. The menu keeps the clicked process's path
 even if the table refreshes while the menu is open.
-Use **Avg / 60 s %** and **Peak / 60 s %** to find sustained load and recent spikes.
+Use **Avg %** and **Peak %** to find sustained load and recent spikes over the last 60 seconds.
 The first minute fills gradually; the detail line shows the actual measured duration.
 
 Sampling runs about once a second while the application is open, including on the System tab.
@@ -79,6 +82,7 @@ src/PCInspector/
   Program.cs                    Application entry point
   MainForm.cs                   Refresh event and display logic
   MainForm.Designer.cs          Window layout written in C#
+  FluentTheme.cs                Shared colors, typography, cards, buttons and tabs
   DisplayFormat.cs              Byte sizes and uptime formatting
   Models/SystemSnapshot.cs      Snapshot and disk data
   Services/SystemInfoService.cs Windows, drive and network queries

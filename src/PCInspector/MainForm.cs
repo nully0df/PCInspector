@@ -30,6 +30,12 @@ public partial class MainForm : Form
             if (IsDisposed || Disposing)
                 return;
 
+            memoryValue.Text = DisplayFormat.Gibibytes(snapshot.TotalMemoryBytes);
+            memoryCaption.Text = snapshot.FreeMemoryBytes.HasValue
+                ? $"{DisplayFormat.Gibibytes(snapshot.FreeMemoryBytes)} available" : "Available memory not reported";
+            uptimeValue.Text = snapshot.Uptime is { } uptime ? $"{uptime.Days}d {uptime.Hours:00}h {uptime.Minutes:00}m" : "Unavailable";
+            volumeValue.Text = snapshot.Disks.Count(disk => disk.TotalBytes.HasValue).ToString();
+
             summaryGrid.Rows.Clear();
             summaryGrid.Rows.Add("Computer", snapshot.ComputerName);
             summaryGrid.Rows.Add("Windows", snapshot.WindowsVersion);
