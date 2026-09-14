@@ -28,6 +28,7 @@ public sealed class ProcessesView : UserControl
     private string? contextName;
     private bool contextRequestedByMouse;
     private bool sampling;
+    private bool openingTaskManager;
     private bool rendering;
     private double lastSampleTime;
     private int investigationPid;
@@ -98,6 +99,8 @@ public sealed class ProcessesView : UserControl
             {
                 contextRequestedByMouse = true;
                 contextPath = null;
+                contextPid = null;
+                contextName = null;
             }
         };
         processMenu.Opening += ProcessMenu_Opening;
@@ -118,14 +121,21 @@ public sealed class ProcessesView : UserControl
         {
             var pid = contextPid;
             var name = contextName;
-            if (pid is null || name is null) return;
+            if (pid is null || name is null || openingTaskManager) return;
+            openingTaskManager = true;
+            showTaskManagerItem.Enabled = false;
             try { await this.showTaskManagerAsync(pid.Value, name); }
             catch (Exception ex)
             {
                 if (!IsDisposed && !Disposing)
                     MessageBox.Show(this,
-                        $"Task Manager was opened, but the process could not be selected.\n{ex.Message}",
+                        $"Could not complete the Task Manager action.\n{ex.Message}",
                         "PCInspector", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally
+            {
+                openingTaskManager = false;
+                if (!IsDisposed && !Disposing) showTaskManagerItem.Enabled = contextPid.HasValue;
             }
         };
         pathBox.AccessibleName = "Selected process executable path";
@@ -247,7 +257,7 @@ public sealed class ProcessesView : UserControl
         e.Cancel = contextPid is null;
         showFileItem.Enabled = FileLocationService.CanLocate(contextPath);
         showFileItem.ToolTipText = showFileItem.Enabled ? contextPath : "File path is unavailable or the file no longer exists.";
-        showTaskManagerItem.Enabled = contextPid.HasValue;
+        showTaskManagerItem.Enabled = contextPid.HasValue && !openingTaskManager;
         showTaskManagerItem.ToolTipText = showTaskManagerItem.Enabled
             ? $"Open Task Manager and select {contextName} (PID {contextPid})"
             : "Process ID is unavailable.";

@@ -177,6 +177,11 @@ Manual checks:
 8. Start and close a harmless app. Its row should become Not observed and disappear after a minute.
 9. Select a process and review command line, parent, signature, hash and network endpoints.
 10. Open Startup and export a JSON or HTML process report.
+11. Right-click PCInspector itself and choose Open in Task Manager. Check that Details selects the exact PID, or that PCInspector reports why selection was unavailable and stays responsive. Repeat with Task Manager already open and with a process that has just exited.
+
+Task Manager integration runs in an isolated helper with a 15-second timeout. Automatic
+selection depends on the Windows version, language and access level. Run the helper failure
+and timeout regression checks with `dotnet run --project tests/PCInspector.Checks -- --task-manager-checks --ui`.
 
 ## Next steps
 

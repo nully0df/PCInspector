@@ -13,12 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="UIAutomationClient">
-      <HintPath>$(WINDIR)\Microsoft.NET\Framework\v4.0.30319\WPF\UIAutomationClient.dll</HintPath>
-    </Reference>
-    <Reference Include="UIAutomationTypes">
-      <HintPath>$(WINDIR)\Microsoft.NET\Framework\v4.0.30319\WPF\UIAutomationTypes.dll</HintPath>
-    </Reference>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+    <InternalsVisibleTo Include="PCInspector.Checks" />
   </ItemGroup>
 
 </Project>

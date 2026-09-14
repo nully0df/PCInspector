@@ -90,6 +90,15 @@ internal static class ProcessUiChecks
                     var headerArgs = new CancelEventArgs();
                     opening.Invoke(menu, [headerArgs]);
                     if (!headerArgs.Cancel) failures.Add("Right-click on a header must not target the old selection");
+                    // Also cover the general MouseDown path for empty grid space.
+                    mouseDown.Invoke(grid, [new DataGridViewCellMouseEventArgs(0, 0, 5, 5,
+                        new MouseEventArgs(MouseButtons.Right, 1, 5, 5, 0))]);
+                    var generalMouseDown = typeof(DataGridView).GetMethod("OnMouseDown",
+                        BindingFlags.Instance | BindingFlags.NonPublic, null, [typeof(MouseEventArgs)], null)!;
+                    generalMouseDown.Invoke(grid, [new MouseEventArgs(MouseButtons.Right, 1, -10, -10, 0)]);
+                    var emptyArgs = new CancelEventArgs();
+                    opening.Invoke(menu, [emptyArgs]);
+                    if (!emptyArgs.Cancel) failures.Add("Empty grid space must clear the previous Task Manager target");
                 }
                 finally
                 {

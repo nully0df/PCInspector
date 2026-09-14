@@ -3,6 +3,13 @@ using PCInspector.Services;
 using PCInspector.Models;
 using System.Diagnostics;
 
+// Child modes exercise the real process boundary without operating Task Manager.
+if (args is ["--helper-test", var mode])
+{
+    if (mode == "hang") Thread.Sleep(30000);
+    return mode == "fail" ? 23 : 0;
+}
+
 var failures = new List<string>();
 void Check(bool condition, string name)
 {
@@ -109,6 +116,60 @@ if (args.Contains("--ui"))
     var uiFailures = ProcessUiChecks.Run();
     foreach (var failure in uiFailures) Console.WriteLine(failure);
     Check(uiFailures.Count == 0, "UI: numeric sorting, missing-data labels and file context-menu targeting");
+}
+
+if (args.Contains("--task-manager-checks"))
+{
+    ProcessStartInfo Child(string mode)
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!);
+        if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(typeof(ProcessUiChecks).Assembly.Location);
+        start.ArgumentList.Add("--helper-test");
+        start.ArgumentList.Add(mode);
+        return start;
+    }
+    await TaskManagerService.RunHelperAsync(Child("ok"), TimeSpan.FromSeconds(5));
+    Check(true, "Task Manager helper: successful exit completes normally");
+    try
+    {
+        await TaskManagerService.RunHelperAsync(Child("fail"), TimeSpan.FromSeconds(5));
+        Check(false, "Task Manager helper: abnormal exit is reported");
+    }
+    catch (InvalidOperationException ex)
+    {
+        Check(ex.Message.Contains("23"), "Task Manager helper: abnormal exit is reported and parent survives");
+    }
+    var elapsed = Stopwatch.StartNew();
+    try
+    {
+        await TaskManagerService.RunHelperAsync(Child("hang"), TimeSpan.FromMilliseconds(500));
+        Check(false, "Task Manager helper: hung worker times out");
+    }
+    catch (TimeoutException)
+    {
+        Check(elapsed.Elapsed < TimeSpan.FromSeconds(5), "Task Manager helper: hung worker is stopped without blocking parent");
+    }
+    // Calls the actual worker entry and its UI Automation dependency, but rejects
+    // a stale identity before opening any external window.
+    Check(TaskManagerService.RunWorker(["--task-manager", Environment.ProcessId.ToString(), "1", "checks"]) == 1,
+        "Task Manager worker rejects a reused PID without touching Task Manager");
+    var automation = typeof(System.Windows.Automation.AutomationElement).Assembly;
+    Check(automation.GetName().Version!.Major >= 10,
+        "UI Automation loads from the modern desktop runtime, not .NET Framework 4");
+    var worker = new ProcessStartInfo(Path.ChangeExtension(typeof(TaskManagerService).Assembly.Location, ".exe"));
+    foreach (var argument in new[] { "--task-manager", Environment.ProcessId.ToString(), "1", "checks" })
+        worker.ArgumentList.Add(argument);
+    try
+    {
+        await TaskManagerService.RunHelperAsync(worker, TimeSpan.FromSeconds(5));
+        Check(false, "Actual PCInspector helper entry reports stale identity");
+    }
+    catch (InvalidOperationException ex)
+    {
+        Check(ex.Message.Contains("PID was reused"),
+            "Actual PCInspector helper starts without MainForm and reports stale identity to parent");
+    }
 }
 
 Console.WriteLine($"Finished: {failures.Count} failure(s).");

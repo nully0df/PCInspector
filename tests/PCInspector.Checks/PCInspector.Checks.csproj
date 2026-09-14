@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <ProjectReference Include="../../src/PCInspector/PCInspector.csproj" />
   </ItemGroup>
 </Project>

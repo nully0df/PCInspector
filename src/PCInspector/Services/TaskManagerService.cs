@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
@@ -6,150 +7,183 @@ namespace PCInspector.Services;
 
 internal static class TaskManagerService
 {
-    private const int ShowNormal = 9;
-
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr handle, int command);
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr handle);
 
-    public static Task OpenAndSelectAsync(int pid, string name) =>
-        Task.Run(() => OpenAndSelect(pid, name));
-
-    private static void OpenAndSelect(int pid, string name)
+    public static async Task OpenAndSelectAsync(int pid, string name)
     {
-        using var taskManager = FindOrStartTaskManager();
-        var window = WaitForWindow(taskManager, TimeSpan.FromSeconds(5));
-        if (window is null)
-            throw new InvalidOperationException("Task Manager window was not ready.");
+        using var target = Process.GetProcessById(pid);
+        var started = target.StartTime.ToUniversalTime().Ticks;
+        if (!string.Equals(target.ProcessName, name, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The selected process has changed. Refresh the process list.");
 
-        if (taskManager.MainWindowHandle != IntPtr.Zero)
+        var assembly = typeof(TaskManagerService).Assembly.Location;
+        var appHost = Path.ChangeExtension(assembly, ".exe");
+        var start = new ProcessStartInfo { FileName = appHost };
+        if (!File.Exists(appHost))
         {
-            ShowWindow(taskManager.MainWindowHandle, ShowNormal);
-            SetForegroundWindow(taskManager.MainWindowHandle);
+            start.FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "dotnet", "dotnet.exe");
+            start.ArgumentList.Add(assembly);
         }
-
-        // Task Manager remembers its last page. Select Details when the localized
-        // UI exposes it, then look for the exact PID in the accessibility tree.
-        var details = FindByName(window, "Details", "Подробности", "Сведения");
-        if (details is not null)
-        {
-            Activate(details);
-            Thread.Sleep(250);
-        }
-
-        if (TrySelectProcess(window, pid, name)) return;
-        throw new InvalidOperationException(
-            $"Task Manager opened, but process {name} (PID {pid}) was not exposed for selection.");
+        start.ArgumentList.Add("--task-manager");
+        start.ArgumentList.Add(pid.ToString(CultureInfo.InvariantCulture));
+        start.ArgumentList.Add(started.ToString(CultureInfo.InvariantCulture));
+        start.ArgumentList.Add(name);
+        await RunHelperAsync(start, TimeSpan.FromSeconds(15));
     }
 
-    private static Process FindOrStartTaskManager()
+    internal static async Task RunHelperAsync(ProcessStartInfo start, TimeSpan timeout)
     {
-        var existing = Process.GetProcessesByName("Taskmgr")
-            .FirstOrDefault(process =>
-            {
-                try { return process.MainWindowHandle != IntPtr.Zero; }
-                catch { return false; }
-            });
-        if (existing is not null) return existing;
-
-        var started = Process.Start(new ProcessStartInfo
+        start.UseShellExecute = false;
+        start.CreateNoWindow = true;
+        start.RedirectStandardError = true;
+        using var helper = Process.Start(start)
+            ?? throw new InvalidOperationException("Could not start the Task Manager helper.");
+        using var deadline = new CancellationTokenSource(timeout);
+        var errors = helper.StandardError.ReadToEndAsync(deadline.Token);
+        try
         {
-            FileName = "taskmgr.exe",
-            UseShellExecute = true
-        });
-        return started ?? throw new InvalidOperationException("Could not start Task Manager.");
-    }
-
-    private static AutomationElement? WaitForWindow(Process taskManager, TimeSpan timeout)
-    {
-        var end = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < end)
+            await helper.WaitForExitAsync(deadline.Token);
+            var detail = (await errors).Trim();
+            if (helper.ExitCode != 0)
+                throw new InvalidOperationException(string.IsNullOrEmpty(detail)
+                    ? $"The Task Manager helper stopped (code {helper.ExitCode}). PCInspector is still running."
+                    : detail);
+        }
+        catch (OperationCanceledException)
         {
-            try
-            {
-                taskManager.Refresh();
-                if (taskManager.MainWindowHandle != IntPtr.Zero)
-                    return AutomationElement.FromHandle(taskManager.MainWindowHandle);
-
-                var condition = new PropertyCondition(
-                    AutomationElement.ProcessIdProperty, taskManager.Id);
-                var window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
-                if (window is not null) return window;
-            }
-            catch (ElementNotAvailableException) { }
+            // Kill only our helper; Task Manager belongs to the user.
+            try { helper.Kill(); }
             catch (InvalidOperationException) { }
-            Thread.Sleep(100);
+            try { await errors; }
+            catch (OperationCanceledException) { }
+            throw new TimeoutException("Task Manager did not respond in time. Select the process manually by PID.");
         }
-        return null;
     }
 
-    private static AutomationElement? FindByName(AutomationElement root, params string[] names)
+    internal static int RunWorker(string[] args)
     {
-        foreach (var name in names)
+        try
         {
-            var element = root.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, name,
-                    PropertyConditionFlags.IgnoreCase));
-            if (element is not null) return element;
+            if (args.Length != 4 || !int.TryParse(args[1], out var pid) || pid <= 0 ||
+                !long.TryParse(args[2], out var started))
+                throw new ArgumentException("Invalid Task Manager helper arguments.");
+            // UI Automation runs on an MTA thread outside the application's UI process.
+            Task.Run(() => OpenAndSelect(pid, started, args[3])).GetAwaiter().GetResult();
+            return 0;
         }
-        return null;
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static void VerifyTarget(int pid, long started)
+    {
+        using var target = Process.GetProcessById(pid);
+        if (target.StartTime.ToUniversalTime().Ticks != started)
+            throw new InvalidOperationException("The selected process exited and its PID was reused. Refresh the list.");
+    }
+
+    private static void OpenAndSelect(int pid, long started, string name)
+    {
+        VerifyTarget(pid, started);
+        var handle = FindTaskManagerWindow();
+        if (handle == IntPtr.Zero)
+        {
+            using var launched = Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "Taskmgr.exe"),
+                UseShellExecute = true
+            });
+        }
+
+        var watch = Stopwatch.StartNew();
+        while (handle == IntPtr.Zero && watch.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            Thread.Sleep(100);
+            // Task Manager can hand off to a different process during startup.
+            handle = FindTaskManagerWindow();
+        }
+        if (handle == IntPtr.Zero)
+            throw new InvalidOperationException("Task Manager did not open a window.");
+
+        ShowWindow(handle, 9);
+        SetForegroundWindow(handle);
+        var window = AutomationElement.FromHandle(handle);
+        foreach (var caption in new[] { "Details", "Подробности", "Сведения" })
+        {
+            var details = window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, caption));
+            if (details is null) continue;
+            if (details.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+                ((SelectionItemPattern)selection).Select();
+            else if (details.TryGetCurrentPattern(InvokePattern.Pattern, out var invoke))
+                ((InvokePattern)invoke).Invoke();
+            break;
+        }
+
+        watch.Restart();
+        do
+        {
+            VerifyTarget(pid, started);
+            if (TrySelectProcess(window, pid, name)) return;
+            Thread.Sleep(200);
+        } while (watch.Elapsed < TimeSpan.FromSeconds(3));
+        throw new InvalidOperationException(
+            $"Task Manager opened, but could not select {name} (PID {pid}). " +
+            "Open Details and locate this PID manually. Selection may be unavailable because of access restrictions or the Task Manager version.");
+    }
+
+    private static IntPtr FindTaskManagerWindow()
+    {
+        var processes = Process.GetProcessesByName("Taskmgr");
+        try
+        {
+            foreach (var process in processes)
+            {
+                try
+                {
+                    if (process.MainWindowHandle != IntPtr.Zero) return process.MainWindowHandle;
+                }
+                catch (InvalidOperationException) { }
+            }
+            return IntPtr.Zero;
+        }
+        finally { foreach (var process in processes) process.Dispose(); }
     }
 
     private static bool TrySelectProcess(AutomationElement root, int pid, string name)
     {
-        var pidText = pid.ToString();
-        var exactPid = root.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.NameProperty, pidText));
-        if (exactPid is not null && SelectNearestItem(exactPid)) return true;
-
-        var rows = root.FindAll(TreeScope.Descendants,
-            new OrCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.DataItem),
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)));
+        var rows = root.FindAll(TreeScope.Descendants, new OrCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.DataItem),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)));
         foreach (AutomationElement row in rows)
         {
-            string rowName;
-            try { rowName = row.Current.Name; }
-            catch (ElementNotAvailableException) { continue; }
-            if (!rowName.Contains(name, StringComparison.OrdinalIgnoreCase) &&
-                !rowName.Contains(pidText, StringComparison.Ordinal))
-                continue;
-            if (SelectNearestItem(row)) return true;
-        }
-        return false;
-    }
-
-    private static bool SelectNearestItem(AutomationElement element)
-    {
-        var current = element;
-        for (var level = 0; level < 6 && current is not null; level++)
-        {
-            if (Activate(current)) return true;
-            try { current = TreeWalker.RawViewWalker.GetParent(current); }
-            catch (ElementNotAvailableException) { return false; }
-        }
-        return false;
-    }
-
-    private static bool Activate(AutomationElement element)
-    {
-        try
-        {
-            if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+            try
             {
+                // Require exact PID and executable name in the SAME row. Never invoke
+                // an ancestor control: Invoke can activate buttons rather than select a row.
+                var pidCell = row.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, pid.ToString(CultureInfo.InvariantCulture)));
+                if (pidCell is null) continue;
+                var nameCondition = new OrCondition(
+                    new PropertyCondition(AutomationElement.NameProperty, name, PropertyConditionFlags.IgnoreCase),
+                    new PropertyCondition(AutomationElement.NameProperty, name + ".exe", PropertyConditionFlags.IgnoreCase));
+                if (row.FindFirst(TreeScope.Element | TreeScope.Descendants, nameCondition) is null) continue;
+                if (!row.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection)) continue;
                 ((SelectionItemPattern)selection).Select();
-                return true;
+                if (row.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll))
+                    ((ScrollItemPattern)scroll).ScrollIntoView();
+                return ((SelectionItemPattern)selection).Current.IsSelected;
             }
-            if (element.TryGetCurrentPattern(InvokePattern.Pattern, out var invoke))
-            {
-                ((InvokePattern)invoke).Invoke();
-                return true;
-            }
+            catch (ElementNotAvailableException) { }
         }
-        catch (ElementNotAvailableException) { }
-        catch (InvalidOperationException) { }
         return false;
     }
 }
