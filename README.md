@@ -1,86 +1,78 @@
 # PCInspector
 
-A Windows diagnostics utility built with C# and .NET 10 WinForms.
-Use it to inspect the computer and identify processes consuming CPU and memory.
+A C# / .NET 10 WinForms utility for inspecting Windows hardware and investigating resource usage.
+The interface takes inspiration from macOS: a quiet sidebar, clear tables and compact resource charts.
+It is a Windows application and a learning portfolio project.
 
-## Features
+![Overview with demonstration data](docs/system-demo.png)
 
-- Computer name and Windows edition, architecture, version and build.
-- CPU model name(s).
-- Graphics adapter names and driver versions, including multiple adapters.
-- Total physical memory usable by Windows and currently available RAM.
-- Local drive letters, drive types, total size and free space.
-- IPv4 addresses of active network adapters, including VPN and virtual adapters.
-- System uptime since the Windows boot time.
-- Refresh button, background collection and partial results when a section fails.
-- Live process list: CPU%, working-set RAM, PID and executable path.
-- Sortable numeric columns, GPU%, average/peak CPU and per-process samples for the last minute.
-- Process command line, parent process, start time and investigation details.
-- File publisher, signature status and SHA-256 hash for an accessible executable.
-- Active TCP/UDP endpoints grouped by process PID.
-- Startup entries from Run keys, automatic services and scheduled tasks.
-- Right-click a process to show its executable selected in File Explorer.
-- Right-click a process to open Task Manager and select the same PID in Details.
-- JSON/HTML export of the current process table and its CPU history.
-- Fluent-inspired light theme with summary cards, rounded panels and quieter tables.
+![Activity with demonstration data](docs/processes-demo.png)
 
-![System overview with demonstration data](docs/system-demo.png)
+![Startup with demonstration data](docs/startup-demo.png)
 
-![Processes tab with demonstration data](docs/processes-demo.png)
+Screenshots contain demonstration hardware, process names, paths and measurements.
 
-The screenshots use demonstration hardware, process names, paths and readings.
+## What it does
+
+| Page | Available information and actions |
+| --- | --- |
+| **Overview** | Windows version, CPU, graphics adapters and drivers, usable/available RAM, uptime, mounted volumes and local IPv4 addresses |
+| **Activity** | Sortable CPU/GPU/memory and I/O measurements; search and filters; graphs for the last 60 seconds; pause, snapshots and comparison |
+| **Process details** | Executable path, command line, ancestry, start time, average/peak CPU, SHA-256, embedded signature check and IPv4/IPv6 TCP/UDP endpoints |
+| **Startup** | Run/RunOnce keys, startup folders, automatic services and scheduled tasks; search, source filter and copying the command |
+| **Export** | JSON or HTML containing the filtered activity capture, history, available system/startup data, selected details and snapshot comparison |
+
+Right-click a process to show its executable in Explorer, copy its PID/path, or attempt to select it in Task Manager.
 
 ## Inspect a busy computer
 
-Open **Processes**, wait for two samples, then sort by **CPU %**, **GPU %** or **RAM MiB**.
-Select a row to inspect its CPU history and copy the full executable path from the box below.
-The details panel also shows the command line, parent process, start time, file signature,
-SHA-256 and active network endpoints for the selected PID.
-Right-click a process and choose **Show file in folder** to locate its executable without running it.
-The item is disabled for unavailable or missing files. The menu keeps the clicked process's path
-even if the table refreshes while the menu is open.
-Choose **Open in Task Manager** to open the Details page and select the clicked process by PID.
-This uses Windows UI Automation because Task Manager has no documented command-line switch for
-selecting a process. If a particular Windows build does not expose its process rows to UI Automation,
-Task Manager still opens and PCInspector reports that the row could not be selected.
-Use **Avg %** and **Peak %** to find sustained load and recent spikes over the last 60 seconds.
-Use the **Startup** tab to review persistence locations before changing anything.
-**Export report** saves the visible process evidence as JSON or HTML.
-The first minute fills gradually; the detail line shows the actual measured duration.
+1. Open **Activity**, allow two samples, and sort by CPU %, GPU %, Memory MiB or I/O.
+2. Search by name, PID, executable path or command line. Filters help isolate CPU/GPU load, recently started processes or limited access.
+3. Select a process and choose CPU, GPU, Memory, Read I/O or Write I/O above its chart.
+4. Use **Pause view** to hold the displayed capture while inspecting it. Collection continues; **Resume view** shows the latest measurements.
+5. Use **Take snapshot**, wait or perform a controlled action, then **Compare**. The comparison matches PID **and start time**, showing newly observed/missing processes and metric deltas. A second snapshot replaces the baseline.
+6. Review file/network details. These are separate observations with a capture time; **Refresh details** updates them explicitly.
+7. Visit **Startup** to collect its entries, then **Export…** to save a report. If Startup has not been scanned, the report says so.
 
-Sampling runs about once a second while the application is open, including on the System tab.
-CPU% is processor time divided by elapsed time and the logical processor count reported to
-PCInspector. It measures time, so it may differ from Task Manager's frequency-adjusted figures.
-RAM is the working set, including shared pages; it is not private memory or a sum of system RAM.
+Snapshots cover the whole displayed capture even when a search is active. The exported activity table follows the current filter; the comparison covers the whole capture.
+Processes without a readable identity are excluded from comparison. “No longer observed” does not establish that a process was terminated.
 
-Missing process values have explicit labels: **Waiting** for a second CPU sample,
-**No access** for unavailable process details, **No samples** for empty history, and
-**Not seen** for a process absent from the latest scan. Numeric sorting always places missing
-values after measured values, in both directions. Protected processes may have no path or CPU
-reading. **Not observed** means a process was absent from the latest successful scan;
-its history remains for up to 60 seconds. PID and start time distinguish separate process lifetimes.
-Processes that start and exit between scans may be missed. Sampling gaps longer than the 60-second history window are
-excluded from CPU calculations, and averages use only valid measured intervals, weighted by time.
-History is held in memory and disappears when the app closes.
+## Measurement details
 
-High load is a lead for investigation, not a malware verdict. GPU Engine counters,
-WMI metadata, IP Helper tables and Windows registry/service/task data can be unavailable
-without the required permissions or on unsupported Windows builds. PCInspector does not
-guarantee detection of hidden malware and does not modify or terminate processes.
+- **CPU:** change in accumulated processor time divided by actual elapsed time and logical processor count. This can differ from Task Manager's frequency-adjusted percentage. Average and peak cover valid intervals within the last 60 seconds.
+- **Memory:** working set, including shared pages; this is not private memory or total system memory.
+- **GPU:** the busiest readable GPU engine for each process, not the sum of simultaneous engine percentages. Availability depends on Windows, the driver and counter access.
+- **I/O:** process transfer bytes divided by actual elapsed time, in MiB/s. Windows includes file, network and device transfers; these columns are **not physical disk throughput**.
+- **Missing data:** unavailable values stay below numbers when sorting. First samples and gaps remain unknown rather than becoming zero. A missing process retains its history for up to 60 seconds.
+- **History:** collected about once a second, kept in memory for 60 seconds and cleared on exit. Brief processes between scans can be missed. Overview updates on launch and Refresh; it is not a continuous hardware monitor.
 
-## Requirements
+High usage is a reason to investigate, not a malware verdict.
+
+## File, network and startup coverage
+
+File inspection holds the file open for stable SHA-256 and WinVerifyTrust checks. Files above 512 MiB are skipped.
+Verification checks an **embedded Authenticode signature offline**. Catalog signatures and online certificate revocation are not checked.
+“No embedded signature” does not establish that a file is unsigned; a valid signature does not establish that it is benign.
+
+Socket tables include IPv4 and IPv6 TCP/UDP ownership. UDP remote peers are not available from these tables.
+Details are captured for the selected process identity and may become outdated after collection.
+
+Startup covers current-user Run/RunOnce, both 32/64-bit machine Run/RunOnce keys, startup folders, automatic services and readable scheduled-task definitions.
+Shortcut targets and their enabled state are not resolved. Scheduled tasks use language-independent XML, with a 12-second process timeout.
+Partial collection failures are shown as warnings, not interpreted as an empty computer. WMI enumeration has a timeout, but not a hard deadline for every Windows call.
+
+Task Manager integration runs in a separate helper with a 15-second timeout so its failure does not close the monitor.
+Automatic selection depends on the Windows build, UI language and access level. When selection is unavailable, the message includes the PID for manual lookup.
+The app does not terminate processes, disable startup entries, change system settings or upload reports.
+
+## Requirements and run
 
 - Windows 10 or Windows 11.
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) to build and run from source.
-- Optional: Visual Studio with .NET 10 support and the **.NET desktop development** workload.
-- Internet access for the first NuGet restore (`System.Management`).
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) to build, or .NET 10 Desktop Runtime for an already built copy.
+- Optional: Visual Studio with .NET 10 support and the .NET desktop development workload.
+- Internet access for the first restore of System.Management.
 
-Normal use does not require administrator privileges. PCInspector reads local information;
-it does not upload reports or change system settings.
-
-## Run
-
-From the repository directory:
+Normal use does not require administrator privileges, although some protected data may be unavailable.
 
 ```powershell
 dotnet restore PCInspector.sln
@@ -88,119 +80,59 @@ dotnet build PCInspector.sln --configuration Release --no-restore
 dotnet run --project src/PCInspector --configuration Release --no-build
 ```
 
-Alternatively, open `PCInspector.sln` in Visual Studio and press **F5**.
+Alternatively, open PCInspector.sln in Visual Studio and press F5.
 
 ## Project structure
 
 ```text
-PCInspector.sln
 src/PCInspector/
-  Program.cs                    Application entry point
-  MainForm.cs                   Refresh event and display logic
-  MainForm.Designer.cs          Window layout written in C#
-  FluentTheme.cs                Shared colors, typography, cards, buttons and tabs
-  DisplayFormat.cs              Byte sizes and uptime formatting
-  Models/SystemSnapshot.cs      Snapshot and disk data
-  Services/SystemInfoService.cs Windows, drive and network queries
-  ProcessesView.cs              Process table and selected history
-  Models/ProcessReading.cs      Readings, process identity and CPU intervals
-  Services/ProcessSampler.cs    Reads Windows processes
-  Services/ProcessHistory.cs    CPU deltas and rolling 60-second history
-  Services/FileLocationService.cs Opens Explorer with the executable selected
-  Services/TaskManagerService.cs Opens Task Manager and selects a process through UI Automation
-  Services/ProcessMetadataService.cs Reads command line and parent process metadata
-  Services/GpuUsageService.cs  Reads per-process GPU Engine utilization counters
-  Services/NetworkConnectionService.cs Reads TCP/UDP endpoints by PID
-  Services/FileAnalysisService.cs Computes signature status and SHA-256
-  Services/PersistenceService.cs Reads startup and persistence locations
-  Services/ExportReportService.cs Writes JSON and HTML process reports
-  StartupView.cs               Startup and persistence table
-tests/PCInspector.Checks/        Executable checks without a test framework
-docs/LEARNING.ru.md              Guided code walkthrough in Russian
+  MainForm.cs / MainForm.Designer.cs   Sidebar, overview and page navigation
+  FluentTheme.cs / DesktopControls.cs Shared visual style and vector controls
+  ProcessesView.cs / ResourceChart.cs Activity interactions and history drawing
+  StartupView.cs                      Startup search and investigation
+  Models/                            Readings, identities, snapshots and reports
+  Services/ProcessSampler.cs          Windows process collection
+  Services/ProcessHistory.cs          CPU/I/O deltas and bounded resource history
+  Services/ProcessIoService.cs        Native transfer counters with identity checks
+  Services/GpuUsageService.cs         PDH GPU engine counters
+  Services/ProcessMetadataService.cs  Background WMI command line and ancestry
+  Services/FileAnalysisService.cs     SHA-256 and WinVerifyTrust
+  Services/NetworkConnectionService.cs IPv4/IPv6 socket tables
+  Services/PersistenceService.cs      Registry, folders, services and task XML
+  Services/SnapshotComparison.cs      Pure comparison of known process identities
+  Services/ExportReportService.cs     JSON/HTML reports with encoded text
+  Services/TaskManagerService.cs      Isolated Task Manager helper
+tests/PCInspector.Checks/              Executable regression checks
+docs/LEARNING.ru.md                    Guided walkthrough in Russian
 ```
 
-The layout is defined in code; edit the layout file directly for this version.
-The service does not depend on UI controls. The form awaits `Task.Run` to keep
-the window responsive while WMI reads system information.
-
-## Data sources and limitations
-
-| Information | Source |
-| --- | --- |
-| Windows, RAM, boot time | WMI `Win32_OperatingSystem` |
-| CPU | WMI `Win32_Processor` |
-| Graphics adapter names and drivers | WMI `Win32_VideoController` |
-| Command line and parent process | WMI `Win32_Process` |
-| Local volumes | .NET `DriveInfo` |
-| Local IPv4 addresses | .NET `NetworkInterface` |
-| Per-process GPU usage | Windows PDH `GPU Engine` counter |
-| TCP/UDP endpoints | IP Helper `GetExtended*Table` |
-| Startup items | Registry, WMI `Win32_Service`, `schtasks.exe` |
-
-RAM and disk sizes use GiB (1 GiB = 1,073,741,824 bytes). Usable RAM can be lower
-than the physically installed RAM. Drives represent mounted volumes, not physical
-SSD/HDD devices; network drives and SMART health are outside this version's scope.
-An empty removable drive is displayed as **Not ready**. With no active IPv4 adapter,
-the app displays **No active IPv4 addresses found**.
-
-Uptime is calculated from WMI boot time and the current clock. Windows Fast Startup
-can preserve the kernel session across shutdowns; use **Restart** to reset it.
-Clock changes can affect the calculation. System-tab values update on launch and on Refresh,
-not continuously. WMI failures produce warnings and preserve other sections.
-WMI enumeration has a timeout, but this is not a hard deadline for the entire refresh.
+The layout is written in C#. Collectors and comparison logic do not depend on UI controls.
+WMI metadata runs independently of CPU/I/O sampling, and the UI awaits background work.
 
 ## Verify
 
 ```powershell
 dotnet run --project tests/PCInspector.Checks --configuration Release
+dotnet run --project tests/PCInspector.Checks --configuration Release -- --ui --process-live --investigation-live --task-manager-checks
 dotnet run --project tests/PCInspector.Checks --configuration Release -- --live
-dotnet run --project tests/PCInspector.Checks --configuration Release -- --process-live
-dotnet run --project tests/PCInspector.Checks --configuration Release -- --ui
 ```
 
-The first command checks formatting, CPU math, PID reuse, gaps and rolling history.
-`--process-live` also checks attribution of real CPU work, RAM and the test process path.
-`--ui` checks that missing values stay below numbers in both sort directions and explains missing data.
-`--live` checks the real Windows
-collector for required data and sensible values; it does not print machine names or IPs.
-It expects a working local WMI service and at least one ready local drive.
+The default checks cover CPU/I/O calculations, gaps, PID reuse, GPU aggregation, network decoding, task XML, snapshot comparison and report escaping.
+The combined command also exercises sorting/search/pause, real CPU and file I/O, owned IPv4/IPv6 sockets, signature verification and helper failure/timeout handling.
+The `--live` hardware checks require readable WMI and a ready local drive; sandbox access restrictions can prevent them from passing.
 
-Manual checks:
-
-1. Compare Windows and CPU with Settings / Task Manager.
-2. Compare RAM and uptime with Task Manager, allowing for sampling time and rounding.
-3. Compare drive capacities with Explorer and IPv4 addresses with `ipconfig`.
-4. Resize the window and click Refresh several times. The button should be disabled while reading.
-5. Where available, check an empty card reader and run without an active network connection.
-6. Close the window during collection; the application should exit without an error dialog.
-7. Open Processes, select a process, sort by CPU or RAM and wait: selection and sorting should persist.
-8. Start and close a harmless app. Its row should become Not observed and disappear after a minute.
-9. Select a process and review command line, parent, signature, hash and network endpoints.
-10. Open Startup and export a JSON or HTML process report.
-11. Right-click PCInspector itself and choose Open in Task Manager. Check that Details selects the exact PID, or that PCInspector reports why selection was unavailable and stays responsive. Repeat with Task Manager already open and with a process that has just exited.
-
-Task Manager integration runs in an isolated helper with a 15-second timeout. Automatic
-selection depends on the Windows version, language and access level. Run the helper failure
-and timeout regression checks with `dotnet run --project tests/PCInspector.Checks -- --task-manager-checks --ui`.
-
-## Next steps
-
-- Add IPv6 endpoint display.
-- Add baseline snapshots and a diff view for repeated inspections.
-- Add cancellation for long WMI and scheduled-task scans.
-
-## Learning notes
-
-Start with the [guided walkthrough](docs/LEARNING.ru.md).
-This is a learning portfolio project; the walkthrough explains the implementation
-and suggests small changes to make independently.
+Manual validation still matters: compare CPU/GPU readings with Windows tools, inspect every page at your DPI setting, test refresh/close during collection, and try Task Manager selection on your Windows build.
+The demo screenshots are visual checks, not evidence of live hardware collection.
 
 ## References
 
-- [Microsoft: create a WinForms application](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/get-started/create-app-visual-studio)
-- [Microsoft: Win32_OperatingSystem](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-operatingsystem)
-- [Microsoft: Win32_Processor](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-processor)
+- [WinForms getting started](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/get-started/create-app-visual-studio)
+- [How Task Manager measures GPU utilization](https://devblogs.microsoft.com/directx/gpus-in-the-task-manager/)
+- [GetProcessIoCounters](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getprocessiocounters)
+- [WinVerifyTrust configuration](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/ns-wintrust-wintrust_data)
+- [IPv6 process-owned TCP rows](https://learn.microsoft.com/en-us/windows/win32/api/tcpmib/ns-tcpmib-mib_tcp6row_owner_pid)
+- [Scheduled-task queries](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-query)
 
-## License
+## Learning and license
 
-[MIT](LICENSE).
+Read the [guided walkthrough in Russian](docs/LEARNING.ru.md). Licensed under [MIT](LICENSE).

@@ -77,6 +77,16 @@ internal static class ProcessUiChecks
                     if (openedPath != samplePath) failures.Add("File menu target changed while open");
                     opening.Invoke(menu, [new CancelEventArgs()]);
                     if (open.Enabled) failures.Add("Unavailable path must disable the menu item");
+                    // The inspector locks the bytes while hashing and checking the signature.
+                    // Let its UI continuation finish before deleting this fixture.
+                    var analysisTask = (Task)typeof(ProcessesView).GetField("investigationTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+                    var deadline = DateTime.UtcNow.AddSeconds(15);
+                    while (!analysisTask.IsCompleted && DateTime.UtcNow < deadline)
+                    {
+                        Application.DoEvents();
+                        Thread.Sleep(10);
+                    }
+                    if (!analysisTask.IsCompleted) failures.Add("Process detail analysis did not finish");
                     File.Delete(samplePath);
                     if (FileLocationService.CanLocate(samplePath)) failures.Add("Deleted file is still offered");
                     try

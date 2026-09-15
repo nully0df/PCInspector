@@ -5,16 +5,19 @@ namespace PCInspector;
 // Shared presentation settings. Collectors and CPU calculations do not depend on this file.
 internal static class FluentTheme
 {
-    public static readonly Color Canvas = Color.FromArgb(243, 245, 248);
+    public static readonly Color Canvas = Color.FromArgb(247, 248, 250);
     public static readonly Color Surface = Color.White;
-    public static readonly Color Text = Color.FromArgb(32, 35, 40);
-    public static readonly Color Muted = Color.FromArgb(99, 108, 122);
-    public static readonly Color Line = Color.FromArgb(229, 233, 239);
-    public static readonly Color Accent = Color.FromArgb(0, 103, 192);
-    public static readonly Color Selection = Color.FromArgb(227, 240, 253);
+    public static readonly Color Sidebar = Color.FromArgb(238, 240, 244);
+    public static readonly Color Text = Color.FromArgb(29, 29, 31);
+    public static readonly Color Muted = Color.FromArgb(110, 112, 119);
+    public static readonly Color Line = Color.FromArgb(231, 232, 236);
+    public static readonly Color Accent = Color.FromArgb(0, 113, 227);
+    public static readonly Color Selection = Color.FromArgb(232, 242, 255);
+    public static readonly Color Secondary = Color.FromArgb(242, 243, 246);
+    public static readonly Color Green = Color.FromArgb(42, 148, 98);
     public static readonly Font BodyFont = new("Segoe UI", 10);
     public static readonly Font CaptionFont = new("Segoe UI", 9);
-    public static readonly Font HeadingFont = new("Segoe UI Semibold", 24);
+    public static readonly Font HeadingFont = new("Segoe UI Semibold", 25);
     public static readonly Font SectionFont = new("Segoe UI Semibold", 11);
     public static readonly Font ValueFont = new("Segoe UI Semibold", 20);
 
@@ -29,8 +32,8 @@ internal static class FluentTheme
         grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
         grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
         {
-            BackColor = Color.FromArgb(249, 250, 252), ForeColor = Muted,
-            SelectionBackColor = Color.FromArgb(249, 250, 252), SelectionForeColor = Text,
+            BackColor = Color.FromArgb(250, 250, 252), ForeColor = Muted,
+            SelectionBackColor = Color.FromArgb(250, 250, 252), SelectionForeColor = Text,
             Font = CaptionFont, Padding = new Padding(10, 8, 10, 8)
         };
         grid.DefaultCellStyle.BackColor = Surface;
@@ -43,8 +46,8 @@ internal static class FluentTheme
             SelectionBackColor = Selection, SelectionForeColor = Text
         };
         grid.DefaultCellStyle.Padding = new Padding(10, 6, 10, 6);
-        grid.RowTemplate.Height = 38;
-        grid.ColumnHeadersHeight = 44;
+        grid.RowTemplate.Height = 36;
+        grid.ColumnHeadersHeight = 42;
         grid.RowHeadersVisible = false;
     }
 
@@ -52,6 +55,7 @@ internal static class FluentTheme
     {
         var path = new GraphicsPath();
         var diameter = Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height));
+        if (diameter <= 0) return path;
         path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
         path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
         path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
@@ -76,7 +80,7 @@ internal sealed class FluentCard : Panel
         base.OnPaint(e);
         if (Width < 2 || Height < 2) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = FluentTheme.RoundedRectangle(new RectangleF(.5f, .5f, Width - 1, Height - 1), 8 * DeviceDpi / 96f);
+        using var path = FluentTheme.RoundedRectangle(new RectangleF(.5f, .5f, Width - 1, Height - 1), 12 * DeviceDpi / 96f);
         using var fill = new SolidBrush(FluentTheme.Surface);
         using var border = new Pen(FluentTheme.Line);
         e.Graphics.FillPath(fill, path);
@@ -87,6 +91,8 @@ internal sealed class FluentCard : Panel
 internal sealed class FluentButton : Button
 {
     private bool hovered;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool Secondary { get; set; }
     public FluentButton()
     {
         FlatStyle = FlatStyle.Flat;
@@ -104,13 +110,18 @@ internal sealed class FluentButton : Button
     {
         e.Graphics.Clear(Parent?.BackColor ?? FluentTheme.Canvas);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = FluentTheme.RoundedRectangle(new RectangleF(.5f, .5f, Width - 1, Height - 1), 5 * DeviceDpi / 96f);
-        using var fill = new SolidBrush(!Enabled ? FluentTheme.Line : hovered ? Color.FromArgb(0, 88, 166) : FluentTheme.Accent);
+        using var path = FluentTheme.RoundedRectangle(new RectangleF(.5f, .5f, Width - 1, Height - 1), 7 * DeviceDpi / 96f);
+        var background = !Enabled ? FluentTheme.Line : Secondary
+            ? hovered ? Color.FromArgb(229, 231, 236) : FluentTheme.Secondary
+            : hovered ? Color.FromArgb(0, 99, 200) : FluentTheme.Accent;
+        using var fill = new SolidBrush(background);
         e.Graphics.FillPath(fill, path);
         TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle,
-            Enabled ? Color.White : FluentTheme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            !Enabled ? FluentTheme.Muted : Secondary ? FluentTheme.Text : Color.White,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         if (Focused && ShowFocusCues)
-            ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -5, -5), Color.White, FluentTheme.Accent);
+            ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -5, -5),
+                Secondary ? FluentTheme.Text : Color.White, background);
     }
 }
 

@@ -9,6 +9,7 @@ public sealed class ProcessHistory(int logicalProcessorCount)
     {
         public ProcessReading Last = reading;
         public readonly List<CpuInterval> Intervals = [];
+        public readonly List<ResourceSample> Samples = [];
     }
 
     private readonly Dictionary<ProcessIdentity, Entry> entries = [];
@@ -33,6 +34,8 @@ public sealed class ProcessHistory(int logicalProcessorCount)
 
             seen.Add(identity);
             double? current = null;
+            double? readRate = null;
+            double? writeRate = null;
             if (!entries.TryGetValue(identity, out var entry))
                 entries[identity] = entry = new Entry(reading);
             else
@@ -40,19 +43,31 @@ public sealed class ProcessHistory(int logicalProcessorCount)
                 var elapsed = reading.TimestampSeconds - entry.Last.TimestampSeconds;
                 // Slow refreshes are valid measurements too. Only discard a gap longer
                 // than the history window, whose activity we cannot place within that window.
-                if (elapsed > 0 && elapsed <= WindowSeconds && reading.CpuSeconds is { } cpu &&
-                    entry.Last.CpuSeconds is { } previous && cpu >= previous)
+                if (elapsed > 0 && elapsed <= WindowSeconds)
                 {
-                    // CPU seconds accumulate across cores. Normalize to the whole computer.
-                    current = Math.Clamp((cpu - previous) / elapsed / processorCount * 100, 0, 100);
-                    entry.Intervals.Add(new CpuInterval(entry.Last.TimestampSeconds,
-                        reading.TimestampSeconds, current.Value));
+                    if (reading.CpuSeconds is { } cpu && entry.Last.CpuSeconds is { } previous &&
+                        double.IsFinite(cpu) && double.IsFinite(previous) && previous >= 0 && cpu >= previous)
+                    {
+                        // CPU seconds accumulate across cores. Normalize to the whole computer.
+                        var percent = (cpu - previous) / elapsed / processorCount * 100;
+                        if (double.IsFinite(percent))
+                        {
+                            current = Math.Clamp(percent, 0, 100);
+                            entry.Intervals.Add(new CpuInterval(entry.Last.TimestampSeconds,
+                                reading.TimestampSeconds, current.Value));
+                        }
+                    }
+                    // I/O counters are cumulative bytes, independent of CPU accessibility.
+                    readRate = Rate(reading.ReadTransferBytes, entry.Last.ReadTransferBytes, elapsed);
+                    writeRate = Rate(reading.WriteTransferBytes, entry.Last.WriteTransferBytes, elapsed);
                 }
                 entry.Last = reading;
             }
+            entry.Samples.Add(new ResourceSample(reading.TimestampSeconds, current,
+                reading.GpuPercent, reading.WorkingSetBytes / (1024d * 1024), readRate, writeRate));
             Prune(entry, now);
             rows.Add(ToRow(entry, current, reading.CpuSeconds is null ? "Limited access"
-                : current is null ? "Measuring..." : "Running", now));
+                : current is null ? "Measuring..." : "Running", now, readRate, writeRate));
         }
 
         foreach (var (identity, entry) in entries.ToArray())
@@ -63,24 +78,55 @@ public sealed class ProcessHistory(int logicalProcessorCount)
                 entries.Remove(identity);
                 continue;
             }
+            AddGap(entry, now);
             Prune(entry, now);
-            entry.Last = entry.Last with { CpuSeconds = null };
+            entry.Last = ClearCounters(entry.Last);
             rows.Add(ToRow(entry, null, "Not observed", now));
         }
         return rows;
     }
 
     // A failed whole scan must not turn the next CPU delta into a fabricated continuous sample.
-    public void BreakSampling()
+    public void BreakSampling(double? timestampSeconds = null)
     {
         foreach (var entry in entries.Values)
-            entry.Last = entry.Last with { CpuSeconds = null };
+        {
+            // A null point also breaks the instantaneous RAM/GPU chart lines during a failed scan.
+            var gapAt = timestampSeconds ?? entry.Last.TimestampSeconds;
+            AddGap(entry, gapAt);
+            Prune(entry, gapAt);
+            entry.Last = ClearCounters(entry.Last);
+        }
     }
 
-    private static void Prune(Entry entry, double now) =>
-        entry.Intervals.RemoveAll(interval => interval.End <= now - WindowSeconds);
+    private static void AddGap(Entry entry, double timestamp)
+    {
+        if (entry.Samples.Count == 0 || entry.Samples[^1] is
+            { CpuPercent: not null } or { GpuPercent: not null } or { MemoryMiB: not null }
+                or { ReadMiBPerSecond: not null } or { WriteMiBPerSecond: not null })
+            entry.Samples.Add(new ResourceSample(timestamp, null, null, null, null, null));
+    }
 
-    private static ProcessRow ToRow(Entry entry, double? current, string status, double now)
+    private static ProcessReading ClearCounters(ProcessReading reading) => reading with
+    {
+        CpuSeconds = null, GpuPercent = null, ReadTransferBytes = null, WriteTransferBytes = null
+    };
+
+    private static double? Rate(ulong? current, ulong? previous, double elapsed)
+    {
+        if (current is not { } bytes || previous is not { } before || bytes < before) return null;
+        var rate = (bytes - before) / elapsed / (1024d * 1024);
+        return double.IsFinite(rate) ? rate : null;
+    }
+
+    private static void Prune(Entry entry, double now)
+    {
+        entry.Intervals.RemoveAll(interval => interval.End <= now - WindowSeconds);
+        entry.Samples.RemoveAll(sample => sample.TimestampSeconds < now - WindowSeconds);
+    }
+
+    private static ProcessRow ToRow(Entry entry, double? current, string status, double now,
+        double? readRate = null, double? writeRate = null)
     {
         var history = entry.Intervals.Select(interval => interval with
         {
@@ -93,6 +139,8 @@ public sealed class ProcessHistory(int logicalProcessorCount)
         return new ProcessRow(entry.Last.Identity, entry.Last.Pid, entry.Last.Name, current, average, peak,
             status == "Not observed" ? null : entry.Last.WorkingSetBytes / (1024d * 1024),
             entry.Last.Path ?? "Unavailable", status, history,
-            entry.Last.CommandLine, entry.Last.ParentPid, entry.Last.ParentName, entry.Last.GpuPercent);
+            entry.Last.CommandLine, entry.Last.ParentPid, entry.Last.ParentName,
+            status == "Not observed" ? null : entry.Last.GpuPercent,
+            readRate, writeRate, entry.Samples.ToArray());
     }
 }

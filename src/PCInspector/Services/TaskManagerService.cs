@@ -13,10 +13,12 @@ internal static class TaskManagerService
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr handle);
 
-    public static async Task OpenAndSelectAsync(int pid, string name)
+    public static async Task OpenAndSelectAsync(int pid, string name, long? expectedStartTimeUtcTicks = null)
     {
         using var target = Process.GetProcessById(pid);
         var started = target.StartTime.ToUniversalTime().Ticks;
+        if (expectedStartTimeUtcTicks is { } expected && started != expected)
+            throw new InvalidOperationException("The displayed process has exited and its PID was reused. Resume or refresh the list.");
         if (!string.Equals(target.ProcessName, name, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The selected process has changed. Refresh the process list.");
 

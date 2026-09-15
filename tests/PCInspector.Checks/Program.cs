@@ -77,9 +77,16 @@ Check(slowRefresh.Update([Reading(71, 12)], 71).Single().CpuPercent is null,
 Check(slowRefresh.Update([Reading(76, 22)], 76).Single().CpuPercent == 25,
     "CPU recovers on the next sample after a long pause");
 
+MetricsChecks.Run(Check);
+InvestigationChecks.Run(Check);
+ActivityChecks.Run(Check);
+
+if (args.Contains("--investigation-live")) await InvestigationChecks.RunLiveAsync(Check);
+
 if (args.Contains("--process-live"))
 {
-    var sampler = new ProcessSampler();
+    MetricsChecks.RunLive(Check);
+    using var sampler = new ProcessSampler();
     var liveHistory = new ProcessHistory(Environment.ProcessorCount);
     liveHistory.Update(sampler.Read(), ProcessSampler.NowSeconds);
     var watch = Stopwatch.StartNew();
@@ -116,10 +123,23 @@ if (args.Contains("--ui"))
     var uiFailures = ProcessUiChecks.Run();
     foreach (var failure in uiFailures) Console.WriteLine(failure);
     Check(uiFailures.Count == 0, "UI: numeric sorting, missing-data labels and file context-menu targeting");
+    var activityFailures = ActivityChecks.RunUi();
+    foreach (var failure in activityFailures) Console.WriteLine(failure);
+    Check(activityFailures.Count == 0, "UI: command-line search, frozen-view filtering, resume and snapshot capture");
 }
 
 if (args.Contains("--task-manager-checks"))
 {
+    try
+    {
+        using var own = Process.GetCurrentProcess();
+        await TaskManagerService.OpenAndSelectAsync(own.Id, own.ProcessName, 1);
+        Check(false, "Task Manager action rejects a stale displayed identity");
+    }
+    catch (InvalidOperationException ex)
+    {
+        Check(ex.Message.Contains("PID was reused"), "Task Manager action rejects stale paused-view identity before starting helper");
+    }
     ProcessStartInfo Child(string mode)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!);

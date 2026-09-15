@@ -6,7 +6,7 @@ public readonly record struct ProcessIdentity(int Pid, long StartTimeUtcTicks);
 public sealed record ProcessReading(int Pid, string Name, long? StartTimeUtcTicks,
     double TimestampSeconds, double? CpuSeconds, long? WorkingSetBytes, string? Path,
     string? CommandLine = null, int? ParentPid = null, string? ParentName = null,
-    double? GpuPercent = null)
+    double? GpuPercent = null, ulong? ReadTransferBytes = null, ulong? WriteTransferBytes = null)
 {
     public ProcessIdentity? Identity => StartTimeUtcTicks is { } start
         ? new ProcessIdentity(Pid, start) : null;
@@ -14,8 +14,13 @@ public sealed record ProcessReading(int Pid, string Name, long? StartTimeUtcTick
 
 public sealed record CpuInterval(double Start, double End, double Percent);
 
+// A missing value marks a gap in the chart; it must never be drawn as zero.
+public sealed record ResourceSample(double TimestampSeconds, double? CpuPercent,
+    double? GpuPercent, double? MemoryMiB, double? ReadMiBPerSecond, double? WriteMiBPerSecond);
+
 public sealed record ProcessRow(ProcessIdentity? Identity, int Pid, string Name,
     double? CpuPercent, double? AverageCpuPercent, double? PeakCpuPercent,
     double? MemoryMiB, string Path, string Status, IReadOnlyList<CpuInterval> History,
     string? CommandLine = null, int? ParentPid = null, string? ParentName = null,
-    double? GpuPercent = null);
+    double? GpuPercent = null, double? ReadMiBPerSecond = null, double? WriteMiBPerSecond = null,
+    IReadOnlyList<ResourceSample>? ResourceHistory = null);
